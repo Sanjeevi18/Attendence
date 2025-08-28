@@ -83,4 +83,5 @@ class DefaultFirebaseOptions {
     authDomain: 'ligths-ac17d.firebaseapp.com',
     storageBucket: 'ligths-ac17d.firebasestorage.app',
   );
+
 }

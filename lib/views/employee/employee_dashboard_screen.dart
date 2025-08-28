@@ -31,24 +31,11 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: () => holidayController.refreshHolidays(),
           ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'logout') {
-                authController.logout();
-              }
+          IconButton(
+            icon: const Icon(Icons.account_circle),
+            onPressed: () {
+              Get.toNamed('/employee-profile');
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout),
-                    SizedBox(width: 8),
-                    Text('Logout'),
-                  ],
-                ),
-              ),
-            ],
           ),
         ],
       ),

@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // New color palette from ColorHunt
+  // New color palette from https://colorhunt.co/palette/000000cfffe2a2d5c6f6f6f6
   static const Color primaryColor = Color(0xFF000000); // Black
-  static const Color primaryColorLight = Color(0xFFA2D5C6); // Light mint green
+  static const Color primaryColorLight = Color(0xFFA2D5C6); // Light teal
   static const Color primaryColorDark = Color(0xFF000000); // Black
-  static const Color accentColor = Color(0xFFCFFFE2); // Light green
+  static const Color accentColor = Color(0xFFCFFFE2); // Light mint
   static const Color backgroundColor = Color(0xFFF6F6F6); // Light gray
   static const Color surfaceColor = Colors.white;
+  static const Color secondaryColor = Color(0xFFA2D5C6); // Teal
   static const Color errorColor = Color(0xFFE53935);
-  static const Color successColor = Color(0xFFA2D5C6); // Mint green
+  static const Color successColor = Color(0xFF43A047);
   static const Color warningColor = Color(0xFFFF9800);
-  static const Color infoColor = Color(0xFFCFFFE2); // Light green
+  static const Color infoColor = Color(0xFFA2D5C6);
 
   static ThemeData lightTheme = ThemeData(
     useMaterial3: true,
@@ -20,7 +21,7 @@ class AppTheme {
       brightness: Brightness.light,
       primary: primaryColor,
       primaryContainer: primaryColorLight,
-      secondary: accentColor,
+      secondary: secondaryColor,
       surface: surfaceColor,
       background: backgroundColor,
       error: errorColor,

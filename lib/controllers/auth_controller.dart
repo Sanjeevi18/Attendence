@@ -245,6 +245,44 @@ class AuthController extends GetxController {
     }
   }
 
+  // Demo login method
+  Future<bool> loginWithDemo(String role) async {
+    try {
+      isLoading.value = true;
+
+      // For demo purposes, create a mock user
+      final mockCompany = Company(
+        id: 'demo-company',
+        name: 'Demo Company',
+        email: 'admin@demo.com',
+        createdAt: DateTime.now(),
+        adminId: 'demo-admin',
+      );
+
+      final mockUser = User(
+        id: role == 'admin' ? 'demo-admin' : 'demo-employee',
+        email: role == 'admin' ? 'admin@demo.com' : 'employee@demo.com',
+        name: role == 'admin' ? 'Demo Admin' : 'Demo Employee',
+        role: role,
+        companyId: 'demo-company',
+        createdAt: DateTime.now(),
+      );
+
+      currentUser.value = mockUser;
+      currentCompany.value = mockCompany;
+      isLoggedIn.value = true;
+
+      Get.snackbar('Success', 'Logged in as ${mockUser.name}');
+      return true;
+    } catch (e) {
+      error.value = e.toString();
+      Get.snackbar('Error', 'Demo login failed: ${e.toString()}');
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   // Logout method
   Future<void> logout() async {
     try {
