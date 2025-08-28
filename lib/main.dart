@@ -79,15 +79,18 @@ class _AppInitializerState extends State<AppInitializer> {
         return;
       }
 
-      // Check authentication state
+      // Get auth controller and wait for auth check to complete
       final authController = Get.find<AuthController>();
 
-      // Wait a moment for auth check
-      await Future.delayed(const Duration(seconds: 1));
+      // Wait for auth check to complete by monitoring the loading state
+      while (authController.isLoading.value) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
 
       if (authController.isLoggedIn.value) {
-        // Initialize holiday controller for logged in users
+        // Initialize controllers for logged in users
         Get.put(HolidayController());
+        Get.put(AttendanceController());
 
         // Navigate to appropriate dashboard
         final user = authController.currentUser.value;
@@ -97,12 +100,16 @@ class _AppInitializerState extends State<AppInitializer> {
           } else {
             Get.off(() => const EmployeeDashboardScreen());
           }
+        } else {
+          // Edge case: logged in but no user data
+          Get.off(() => const LoginScreen());
         }
       } else {
         // Show login screen
         Get.off(() => const LoginScreen());
       }
     } catch (e) {
+      print('App initialization error: $e');
       // In case of error, show login screen
       Get.off(() => const LoginScreen());
     }

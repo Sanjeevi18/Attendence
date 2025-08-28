@@ -5,7 +5,7 @@ import '../../controllers/holiday_controller.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/attendance_controller.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/shared_calendar_widget.dart';
+import '../../widgets/attendance_calendar_widget.dart';
 import 'employee_management_screen.dart';
 import 'admin_profile_screen.dart';
 
@@ -510,11 +510,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
           ),
           const SizedBox(height: 16),
-          SharedCalendarWidget(
-            onDateSelected: (date) {
-              _showAddHolidayDialog(date);
-            },
-          ),
+          const AttendanceCalendarWidget(),
         ],
       ),
     );

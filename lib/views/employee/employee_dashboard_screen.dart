@@ -3,7 +3,10 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../../controllers/holiday_controller.dart';
 import '../../controllers/auth_controller.dart';
-import '../../widgets/shared_calendar_widget.dart';
+import '../../controllers/location_controller.dart';
+import '../../controllers/attendance_controller.dart';
+import '../../widgets/attendance_calendar_widget.dart';
+import '../../widgets/location_attendance_widget.dart';
 import '../../models/holiday_model.dart';
 
 class EmployeeDashboardScreen extends StatefulWidget {
@@ -19,6 +22,14 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
   final AuthController authController = Get.find<AuthController>();
 
   @override
+  void initState() {
+    super.initState();
+    // Initialize controllers
+    Get.put(LocationController());
+    Get.put(AttendanceController());
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -27,10 +38,6 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => holidayController.refreshHolidays(),
-          ),
           IconButton(
             icon: const Icon(Icons.account_circle),
             onPressed: () {
@@ -46,7 +53,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
           children: [
             _buildWelcomeCard(),
             const SizedBox(height: 16),
-            _buildAttendanceQuickActions(),
+            const LocationAttendanceWidget(),
             const SizedBox(height: 16),
             _buildCalendarSection(),
             const SizedBox(height: 16),
@@ -120,116 +127,6 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
     });
   }
 
-  Widget _buildAttendanceQuickActions() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Quick Actions',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.indigo,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildActionButton(
-                  'Check In',
-                  Icons.login,
-                  Colors.green,
-                  () => _handleCheckIn(),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildActionButton(
-                  'Check Out',
-                  Icons.logout,
-                  Colors.orange,
-                  () => _handleCheckOut(),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildActionButton(
-                  'View Timesheet',
-                  Icons.schedule,
-                  Colors.blue,
-                  () => _viewTimesheet(),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildActionButton(
-                  'Request Leave',
-                  Icons.event_busy,
-                  Colors.purple,
-                  () => _requestLeave(),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(
-    String label,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildCalendarSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,13 +145,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
           style: TextStyle(color: Colors.grey, fontSize: 14),
         ),
         const SizedBox(height: 16),
-        SharedCalendarWidget(
-          showHolidayDetails: true,
-          readOnly: true, // Employees can view but not edit
-          onDateSelected: (date) {
-            // Handle date selection if needed
-          },
-        ),
+        const AttendanceCalendarWidget(),
       ],
     );
   }
@@ -443,59 +334,5 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
       default:
         return Icons.event;
     }
-  }
-
-  // Action handlers
-  void _handleCheckIn() {
-    // Check if today is a holiday
-    holidayController.isHoliday(DateTime.now()).then((isHoliday) {
-      if (isHoliday) {
-        holidayController.getHolidayForDate(DateTime.now()).then((holiday) {
-          Get.dialog(
-            AlertDialog(
-              title: const Text('Holiday Notice'),
-              content: Text(
-                'Today is ${holiday?.title ?? 'a holiday'}. Are you sure you want to check in?',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Get.back(),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    Get.back();
-                    _performCheckIn();
-                  },
-                  child: const Text('Check In Anyway'),
-                ),
-              ],
-            ),
-          );
-        });
-      } else {
-        _performCheckIn();
-      }
-    });
-  }
-
-  void _performCheckIn() {
-    // Implement actual check-in logic
-    Get.snackbar('Success', 'Checked in successfully!');
-  }
-
-  void _handleCheckOut() {
-    // Implement check-out logic
-    Get.snackbar('Success', 'Checked out successfully!');
-  }
-
-  void _viewTimesheet() {
-    // Navigate to timesheet view
-    Get.snackbar('Info', 'Timesheet feature coming soon!');
-  }
-
-  void _requestLeave() {
-    // Navigate to leave request screen
-    Get.snackbar('Info', 'Leave request feature coming soon!');
   }
 }

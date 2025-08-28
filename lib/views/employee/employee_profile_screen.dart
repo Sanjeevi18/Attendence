@@ -354,44 +354,46 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
   Widget _buildAttendanceStats() {
     return _buildSection('This Month Statistics', Icons.assessment, [
       Obx(
-        () => Row(
+        () => Column(
           children: [
-            Expanded(
-              child: _buildStatCard(
-                'Present Days',
-                '${attendanceController.employeePresentDays.value}',
-                Colors.green,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Present Days',
+                    '${attendanceController.employeePresentDays.value}',
+                    Colors.green,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    'Absent Days',
+                    '${attendanceController.employeeAbsentDays.value}',
+                    Colors.red,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildStatCard(
-                'Absent Days',
-                '${attendanceController.employeeAbsentDays.value}',
-                Colors.red,
-              ),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: 12),
-      Obx(
-        () => Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                'Leave Days',
-                '${attendanceController.employeeLeaveDays.value}',
-                Colors.orange,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildStatCard(
-                'Working Hours',
-                attendanceController.formattedWorkingHours,
-                Colors.indigo,
-              ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Leave Days',
+                    '${attendanceController.employeeLeaveDays.value}',
+                    Colors.orange,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    'Working Hours',
+                    attendanceController.formattedWorkingHours,
+                    Colors.indigo,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -401,6 +403,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
 
   Widget _buildStatCard(String title, String value, Color color) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
@@ -408,6 +411,8 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
         border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             value,
@@ -416,6 +421,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
               fontWeight: FontWeight.bold,
               color: color,
             ),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),
           Text(
@@ -426,6 +432,8 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
               fontWeight: FontWeight.w500,
             ),
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -434,6 +442,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
 
   Widget _buildSection(String title, IconData icon, List<Widget> children) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -461,12 +470,16 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                 child: Icon(icon, color: Colors.indigo, size: 24),
               ),
               const SizedBox(width: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.indigo,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.indigo,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

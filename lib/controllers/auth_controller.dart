@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../models/company_model.dart';
@@ -21,6 +22,43 @@ class AuthController extends GetxController {
   // Check if user is already logged in
   Future<void> _checkAuthState() async {
     try {
+      isLoading.value = true;
+
+      // First check SharedPreferences for login state
+      final prefs = await SharedPreferences.getInstance();
+      final isLoggedInPref = prefs.getBool('isLoggedIn') ?? false;
+      final savedUserId = prefs.getString('userId');
+      final savedUserEmail = prefs.getString('userEmail');
+
+      if (isLoggedInPref && savedUserId != null && savedUserEmail != null) {
+        // Check if Firebase user is still authenticated
+        final firebaseUser = FirebaseService.getCurrentFirebaseUser();
+
+        if (firebaseUser != null && firebaseUser.email == savedUserEmail) {
+          // Get user data from Firestore
+          final user = await FirebaseService.getUserByEmail(
+            firebaseUser.email!,
+          );
+          if (user != null && user.isActive && user.id == savedUserId) {
+            currentUser.value = user;
+            isLoggedIn.value = true;
+
+            // Load company data
+            final company = await FirebaseService.getCompanyById(
+              user.companyId,
+            );
+            currentCompany.value = company;
+
+            // Update last login
+            await FirebaseService.updateLastLogin(user.id);
+
+            print('Auto-login successful for: ${user.email}');
+            return;
+          }
+        }
+      }
+
+      // If SharedPreferences check failed, try Firebase Auth only
       final firebaseUser = FirebaseService.getCurrentFirebaseUser();
       if (firebaseUser != null) {
         // Get user data from Firestore
@@ -35,10 +73,24 @@ class AuthController extends GetxController {
 
           // Update last login
           await FirebaseService.updateLastLogin(user.id);
+
+          // Save login state for next time
+          await _saveLoginState();
+
+          print('Firebase auto-login successful for: ${user.email}');
+          return;
         }
       }
+
+      // If no valid login found, clear any stale data
+      await _clearLoginState();
+      print('No valid login state found');
     } catch (e) {
       print('Auth state check error: $e');
+      // Clear potentially corrupted login state
+      await _clearLoginState();
+    } finally {
+      isLoading.value = false;
     }
   }
 
@@ -133,6 +185,7 @@ class AuthController extends GetxController {
     String? phone,
     String? department,
     String? designation,
+    String role = 'employee',
   }) async {
     try {
       isLoading.value = true;
@@ -165,7 +218,7 @@ class AuthController extends GetxController {
         id: firebaseUserId,
         email: email,
         name: name,
-        role: 'employee',
+        role: role,
         companyId: currentUser.value!.companyId,
         phone: phone,
         department: department,
@@ -286,16 +339,44 @@ class AuthController extends GetxController {
   // Logout method
   Future<void> logout() async {
     try {
+      isLoading.value = true;
+
+      // Sign out from Firebase
       await FirebaseService.signOut();
+
+      // Clear login state from shared preferences
       await _clearLoginState();
 
+      // Clear user data
       currentUser.value = null;
       currentCompany.value = null;
       isLoggedIn.value = false;
+      error.value = '';
 
-      Get.offAllNamed('/onboarding');
+      // Clear other controllers to prevent memory leaks
+      try {
+        // Clear all GetX controllers except AuthController
+        Get.deleteAll(force: true);
+        // Re-register AuthController since we still need it
+        Get.put(this, permanent: true);
+      } catch (e) {
+        print('Error clearing controllers: $e');
+      }
+
+      // Navigate to login screen
+      Get.offAllNamed('/login');
+
+      Get.snackbar(
+        'Success',
+        'Logged out successfully',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+      );
     } catch (e) {
+      print('Logout error: $e');
       Get.snackbar('Error', 'Logout failed: ${e.toString()}');
+    } finally {
+      isLoading.value = false;
     }
   }
 
@@ -336,6 +417,25 @@ class AuthController extends GetxController {
 
   // Get current company name
   String? get currentCompanyName => currentCompany.value?.name;
+
+  // Manually refresh auth state (useful for testing or forced refresh)
+  Future<void> refreshAuthState() async {
+    await _checkAuthState();
+  }
+
+  // Check if user session is still valid
+  Future<bool> isSessionValid() async {
+    try {
+      final firebaseUser = FirebaseService.getCurrentFirebaseUser();
+      if (firebaseUser == null) return false;
+
+      final user = await FirebaseService.getUserByEmail(firebaseUser.email!);
+      return user != null && user.isActive;
+    } catch (e) {
+      print('Session validation error: $e');
+      return false;
+    }
+  }
 
   // Validate if user can access company features
   bool get canAccessCompanyFeatures =>

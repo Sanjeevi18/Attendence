@@ -348,6 +348,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
 
   Widget _buildSection(String title, IconData icon, List<Widget> children) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -368,12 +369,16 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                 child: Icon(icon, color: AppTheme.primaryColor, size: 24),
               ),
               const SizedBox(width: 12),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primaryColor,
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryColor,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

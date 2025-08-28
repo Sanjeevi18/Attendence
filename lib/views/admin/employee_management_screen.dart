@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'dart:async';
 import '../../controllers/auth_controller.dart';
+import '../../controllers/attendance_controller.dart';
 import '../../services/firebase_service.dart';
 import '../../models/user_model.dart';
 import '../../theme/app_theme.dart';
-import 'employee_detail_screen.dart';
 
 class EmployeeManagementScreen extends StatefulWidget {
   const EmployeeManagementScreen({super.key});
@@ -16,13 +17,22 @@ class EmployeeManagementScreen extends StatefulWidget {
 
 class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   final AuthController authController = Get.find<AuthController>();
+  final AttendanceController attendanceController =
+      Get.find<AttendanceController>();
   List<User> employees = [];
+  Map<String, bool> employeeDutyStatus = {};
+  Map<String, Map<String, dynamic>?> employeeLocationData = {};
   bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadEmployees();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   Future<void> _loadEmployees() async {
@@ -36,11 +46,37 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
           // Show both employees and admins
           employees = users;
         });
+
+        // Load real-time duty status for all employees
+        await _loadEmployeeDutyStatus();
       }
     } catch (e) {
       Get.snackbar('Error', 'Failed to load employees: ${e.toString()}');
     } finally {
       setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _loadEmployeeDutyStatus() async {
+    try {
+      // Update attendance controller's employee list
+      attendanceController.allEmployees.value = employees;
+
+      // Get real-time duty status and location data for all employees
+      final dutyStatus = await attendanceController.getAllEmployeesDutyStatus();
+      final Map<String, Map<String, dynamic>?> locationData = {};
+
+      for (final employee in employees) {
+        locationData[employee.id] = await attendanceController
+            .getEmployeeLocationData(employee.id);
+      }
+
+      setState(() {
+        employeeDutyStatus = dutyStatus;
+        employeeLocationData = locationData;
+      });
+    } catch (e) {
+      print('Error loading duty status: $e');
     }
   }
 
@@ -52,22 +88,19 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadEmployees,
-          ),
-        ],
       ),
-      body: Column(
-        children: [
-          _buildStatsCard(),
-          Expanded(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _buildEmployeesList(),
-          ),
-        ],
+      body: RefreshIndicator(
+        onRefresh: _loadEmployees,
+        child: Column(
+          children: [
+            _buildStatsCard(),
+            Expanded(
+              child: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _buildEmployeesList(),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showCreateEmployeeDialog,
@@ -82,6 +115,11 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   }
 
   Widget _buildStatsCard() {
+    final activeCount = employeeDutyStatus.values
+        .where((isActive) => isActive)
+        .length;
+    final inactiveCount = employees.length - activeCount;
+
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
@@ -115,6 +153,11 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                 ),
                 Text(
                   '${employees.where((e) => e.role == 'employee').length} Employees • ${employees.where((e) => e.role == 'admin').length} Admins',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$activeCount Active • $inactiveCount Inactive',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
@@ -177,6 +220,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   }
 
   Widget _buildEmployeeCard(User employee) {
+    final isOnDuty = employeeDutyStatus[employee.id] ?? false;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
@@ -241,26 +286,50 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                 employee.email,
                 style: TextStyle(color: Colors.grey[600], fontSize: 14),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Row(
                 children: [
                   Container(
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      color: employee.isActive ? Colors.green : Colors.red,
+                      color: isOnDuty ? Colors.green : Colors.grey,
                       shape: BoxShape.circle,
                     ),
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    employee.isActive ? 'Active' : 'Inactive',
+                    isOnDuty ? 'On Duty' : 'Off Duty',
                     style: TextStyle(
-                      color: employee.isActive ? Colors.green : Colors.red,
+                      color: isOnDuty ? Colors.green : Colors.grey,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  if (isOnDuty) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.green.withOpacity(0.3),
+                        ),
+                      ),
+                      child: const Text(
+                        'ACTIVE',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
               if (employee.department != null ||
@@ -293,48 +362,51 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                   ],
                 ),
               ],
+              // Location info
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.location_on, size: 14, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      _getLocationText(employee.id),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
-          trailing: PopupMenuButton<String>(
-            onSelected: (value) => _handleEmployeeAction(value, employee),
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'view',
-                child: Row(
-                  children: [
-                    Icon(Icons.visibility, size: 20),
-                    SizedBox(width: 8),
-                    Text('View Details'),
-                  ],
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Status indicator
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: isOnDuty ? Colors.green : Colors.grey,
+                  shape: BoxShape.circle,
                 ),
               ),
-              const PopupMenuItem(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit, size: 20),
-                    SizedBox(width: 8),
-                    Text('Edit'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: employee.isActive ? 'deactivate' : 'activate',
-                child: Row(
-                  children: [
-                    Icon(
-                      employee.isActive ? Icons.block : Icons.check_circle,
-                      size: 20,
-                      color: employee.isActive ? Colors.red : Colors.green,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      employee.isActive ? 'Deactivate' : 'Activate',
-                      style: TextStyle(
-                        color: employee.isActive ? Colors.red : Colors.green,
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 8),
+              // Remove button
+              InkWell(
+                onTap: () => _confirmRemoveEmployee(employee),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                    size: 18,
+                  ),
                 ),
               ),
             ],
@@ -344,23 +416,74 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     );
   }
 
-  void _handleEmployeeAction(String action, User employee) {
-    switch (action) {
-      case 'view':
-        _navigateToEmployeeDetails(employee);
-        break;
-      case 'edit':
-        _showEditEmployeeDialog(employee);
-        break;
-      case 'deactivate':
-      case 'activate':
-        _toggleEmployeeStatus(employee);
-        break;
+  String _getLocationText(String employeeId) {
+    final locationData = employeeLocationData[employeeId];
+    if (locationData == null) {
+      return 'Location not available';
+    }
+
+    final isActive = locationData['isActive'] ?? false;
+    final location = locationData['location'] ?? 'Unknown location';
+
+    if (isActive) {
+      return 'Current: $location';
+    } else {
+      return 'Last: $location';
+    }
+  }
+
+  void _confirmRemoveEmployee(User employee) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Remove Employee'),
+          content: Text(
+            'Are you sure you want to remove ${employee.name}? This action cannot be undone and will delete all associated data.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _removeEmployee(employee);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Remove'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _removeEmployee(User employee) async {
+    try {
+      await attendanceController.removeEmployee(employee.id);
+      await _loadEmployees(); // Refresh the list
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to remove employee: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+      );
     }
   }
 
   void _navigateToEmployeeDetails(User employee) {
-    Get.to(() => EmployeeDetailScreen(employee: employee));
+    // Navigate to employee detail screen - for now just show a snackbar
+    Get.snackbar(
+      'Employee Details',
+      '${employee.name} - ${employee.role}',
+      backgroundColor: Colors.blue,
+      colorText: Colors.white,
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
 
   void _showCreateEmployeeDialog() {
@@ -371,6 +494,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     final confirmPasswordController = TextEditingController();
     bool isPasswordVisible = false;
     bool isConfirmPasswordVisible = false;
+    String selectedRole = 'employee'; // Default role
 
     final authController = Get.find<AuthController>();
     final companyName = authController.currentCompany.value?.name ?? 'Company';
@@ -532,6 +656,75 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                     ),
                     const SizedBox(height: 20),
 
+                    // Role Selection
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.admin_panel_settings,
+                                color: AppTheme.primaryColor,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Role Selection',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                              const Text(
+                                ' *',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildRoleCard(
+                                  'Employee',
+                                  'Standard user with basic access',
+                                  Icons.person,
+                                  Colors.blue,
+                                  selectedRole == 'employee',
+                                  () =>
+                                      setState(() => selectedRole = 'employee'),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildRoleCard(
+                                  'Admin',
+                                  'Full access with management rights',
+                                  Icons.admin_panel_settings,
+                                  Colors.red,
+                                  selectedRole == 'admin',
+                                  () => setState(() => selectedRole = 'admin'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
                     // Password Field
                     _buildModernTextField(
                       controller: passwordController,
@@ -613,9 +806,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                           child: ElevatedButton(
                             onPressed: () => _createEmployeeFromForm(
                               formKey,
-                              nameController.text.trim(),
-                              emailController.text.trim(),
-                              passwordController.text,
+                              nameController,
+                              emailController,
+                              passwordController,
+                              selectedRole,
                             ),
                             style: ElevatedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -649,6 +843,53 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoleCard(
+    String title,
+    String description,
+    IconData icon,
+    Color color,
+    bool isSelected,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.1) : Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey.shade300,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: isSelected ? color : Colors.grey, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? color : Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              description,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: isSelected ? color.withOpacity(0.8) : Colors.grey,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -751,13 +992,18 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
 
   Future<void> _createEmployeeFromForm(
     GlobalKey<FormState> formKey,
-    String name,
-    String email,
-    String password,
+    TextEditingController nameController,
+    TextEditingController emailController,
+    TextEditingController passwordController,
+    String role,
   ) async {
     if (!formKey.currentState!.validate()) {
       return;
     }
+
+    final name = nameController.text.trim();
+    final email = emailController.text.trim();
+    final password = passwordController.text;
 
     try {
       // Show loading
@@ -770,12 +1016,18 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         name: name,
         email: email,
         password: password,
+        role: role,
       );
 
       // Close loading dialog
       Get.back();
 
       if (success) {
+        // Clear input fields
+        nameController.clear();
+        emailController.clear();
+        passwordController.clear();
+
         // Close create dialog
         Navigator.of(context).pop();
         // Reload employees list
@@ -806,15 +1058,5 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         duration: const Duration(seconds: 4),
       );
     }
-  }
-
-  void _showEditEmployeeDialog(User employee) {
-    // Implementation for editing employee would go here
-    Get.snackbar('Info', 'Edit employee feature coming soon!');
-  }
-
-  void _toggleEmployeeStatus(User employee) {
-    // Implementation for toggling employee status would go here
-    Get.snackbar('Info', 'Employee status toggle feature coming soon!');
   }
 }

@@ -1,15 +1,19 @@
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/user_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../models/user_model.dart' as UserModel;
 import '../services/firebase_service.dart';
-import 'auth_controller.dart';
+import '../controllers/auth_controller.dart';
+import '../controllers/location_controller.dart';
 
 class AttendanceController extends GetxController {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final AuthController authController = Get.find<AuthController>();
 
   // Observable variables
-  final RxList<User> allEmployees = <User>[].obs;
+  final RxList<UserModel.User> allEmployees = <UserModel.User>[].obs;
   final RxInt totalEmployees = 0.obs;
   final RxInt presentToday = 0.obs;
   final RxInt absentToday = 0.obs;
@@ -28,6 +32,7 @@ class AttendanceController extends GetxController {
   void onInit() {
     super.onInit();
     loadEmployeeData();
+    checkTodayStatus();
     if (authController.currentUser.value?.isAdmin == true) {
       loadAdminStats();
     } else {
@@ -59,41 +64,58 @@ class AttendanceController extends GetxController {
 
       // Get today's date
       final today = DateTime.now();
-      final todayStart = DateTime(today.year, today.month, today.day);
-      final todayEnd = todayStart.add(const Duration(days: 1));
 
       // Reset values
       presentToday.value = 0;
       absentToday.value = 0;
       onLeaveToday.value = 0;
 
-      // Load actual attendance data from Firebase
+      // Load attendance data with simplified query
       final attendanceQuery = await _firestore
           .collection('attendance')
           .where('companyId', isEqualTo: companyId)
-          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(todayStart))
-          .where('date', isLessThan: Timestamp.fromDate(todayEnd))
           .get();
 
+      // Filter locally for today's attendance
+      int todayPresent = 0;
+      for (var doc in attendanceQuery.docs) {
+        final data = doc.data();
+        final date = (data['date'] as Timestamp).toDate();
+        if (date.year == today.year &&
+            date.month == today.month &&
+            date.day == today.day) {
+          todayPresent++;
+        }
+      }
+
+      // Load leave data with simplified query
       final leaveQuery = await _firestore
           .collection('leaves')
           .where('companyId', isEqualTo: companyId)
-          .where('startDate', isLessThanOrEqualTo: Timestamp.fromDate(today))
-          .where('endDate', isGreaterThanOrEqualTo: Timestamp.fromDate(today))
           .where('status', isEqualTo: 'approved')
           .get();
 
-      // Count present employees
-      presentToday.value = attendanceQuery.docs.length;
+      // Filter locally for today's leaves
+      int todayOnLeave = 0;
+      for (var doc in leaveQuery.docs) {
+        final data = doc.data();
+        final startDate = (data['startDate'] as Timestamp).toDate();
+        final endDate = (data['endDate'] as Timestamp).toDate();
+        if (today.isAfter(startDate.subtract(const Duration(days: 1))) &&
+            today.isBefore(endDate.add(const Duration(days: 1)))) {
+          todayOnLeave++;
+        }
+      }
 
-      // Count employees on leave
-      onLeaveToday.value = leaveQuery.docs.length;
+      presentToday.value = todayPresent;
+      onLeaveToday.value = todayOnLeave;
 
       // Calculate absent (total - present - on leave)
       absentToday.value =
           totalEmployees.value - presentToday.value - onLeaveToday.value;
 
       // Ensure no negative values
+      if (absentToday.value < 0) absentToday.value = 0;
       if (absentToday.value < 0) absentToday.value = 0;
     } catch (e) {
       error.value = 'Failed to load admin stats: $e';
@@ -118,50 +140,63 @@ class AttendanceController extends GetxController {
       employeeLeaveDays.value = 0;
       employeeWorkingHours.value = 0;
 
-      // Load attendance data for current employee
+      // Load attendance data with simplified query
       final attendanceQuery = await _firestore
           .collection('attendance')
           .where('userId', isEqualTo: userId)
           .where('companyId', isEqualTo: companyId)
-          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(monthStart))
-          .where('date', isLessThan: Timestamp.fromDate(monthEnd))
           .get();
 
-      // Load leave data for current employee
+      // Filter locally for current month and calculate stats
+      int totalHours = 0;
+      int presentDays = 0;
+      for (var doc in attendanceQuery.docs) {
+        final data = doc.data();
+        final date = (data['date'] as Timestamp).toDate();
+
+        // Check if date is in current month
+        if (date.year == now.year && date.month == now.month) {
+          presentDays++;
+
+          // Calculate working hours if checkout exists
+          if (data['checkOut'] != null) {
+            final checkIn = (data['checkIn'] as Timestamp).toDate();
+            final checkOut = (data['checkOut'] as Timestamp).toDate();
+            final hoursWorked = checkOut.difference(checkIn).inHours;
+            totalHours += hoursWorked;
+          }
+        }
+      }
+
+      employeePresentDays.value = presentDays;
+      employeeWorkingHours.value = totalHours;
+
+      // Load leave data with simplified query
       final leaveQuery = await _firestore
           .collection('leaves')
           .where('userId', isEqualTo: userId)
           .where('companyId', isEqualTo: companyId)
-          .where(
-            'startDate',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(monthStart),
-          )
-          .where('startDate', isLessThan: Timestamp.fromDate(monthEnd))
           .where('status', isEqualTo: 'approved')
           .get();
 
-      // Calculate present days and working hours
-      int totalHours = 0;
-      for (var doc in attendanceQuery.docs) {
-        final data = doc.data();
-        if (data['checkOut'] != null) {
-          final checkIn = (data['checkIn'] as Timestamp).toDate();
-          final checkOut = (data['checkOut'] as Timestamp).toDate();
-          final hoursWorked = checkOut.difference(checkIn).inHours;
-          totalHours += hoursWorked;
-        }
-      }
-
-      employeePresentDays.value = attendanceQuery.docs.length;
-      employeeWorkingHours.value = totalHours;
-
-      // Calculate leave days
+      // Filter locally for current month leaves
       int totalLeaveDays = 0;
       for (var doc in leaveQuery.docs) {
         final data = doc.data();
         final startDate = (data['startDate'] as Timestamp).toDate();
         final endDate = (data['endDate'] as Timestamp).toDate();
-        totalLeaveDays += endDate.difference(startDate).inDays + 1;
+
+        // Check if leave overlaps with current month
+        if ((startDate.year == now.year && startDate.month == now.month) ||
+            (endDate.year == now.year && endDate.month == now.month) ||
+            (startDate.isBefore(monthStart) && endDate.isAfter(monthEnd))) {
+          // Calculate days within current month
+          final leaveStart = startDate.isBefore(monthStart)
+              ? monthStart
+              : startDate;
+          final leaveEnd = endDate.isAfter(monthEnd) ? monthEnd : endDate;
+          totalLeaveDays += leaveEnd.difference(leaveStart).inDays + 1;
+        }
       }
       employeeLeaveDays.value = totalLeaveDays;
 
@@ -201,5 +236,491 @@ class AttendanceController extends GetxController {
   // Get formatted working hours for display
   String get formattedWorkingHours {
     return '${employeeWorkingHours.value}h';
+  }
+
+  // Attendance tracking
+  final RxBool hasCheckedInToday = false.obs;
+  final RxString lastActivity = ''.obs;
+
+  // Check if user has checked in today
+  Future<void> checkTodayStatus() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final today = DateTime.now();
+
+      // Simplified query - get all user's attendance records
+      final querySnapshot = await _firestore
+          .collection('attendance')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      // Filter locally for today's records
+      bool foundTodayCheckin = false;
+      DateTime? todayCheckInTime;
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final date = (data['date'] as Timestamp).toDate();
+
+        // Check if this is today's record
+        if (date.year == today.year &&
+            date.month == today.month &&
+            date.day == today.day) {
+          // Check if user hasn't checked out yet
+          if (data['checkOutTime'] == null) {
+            foundTodayCheckin = true;
+            if (data['checkInTime'] != null) {
+              todayCheckInTime = (data['checkInTime'] as Timestamp).toDate();
+            }
+            break;
+          }
+        }
+      }
+
+      hasCheckedInToday.value = foundTodayCheckin;
+
+      if (hasCheckedInToday.value && todayCheckInTime != null) {
+        final formatter = DateFormat('hh:mm a');
+        lastActivity.value =
+            'Checked in at ${formatter.format(todayCheckInTime)}';
+      }
+    } catch (e) {
+      print('Error checking today status: $e');
+    }
+  }
+
+  Future<void> checkIn() async {
+    if (isLoading.value) return;
+
+    try {
+      isLoading.value = true;
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+
+      if (!userDoc.exists) return;
+
+      final userData = userDoc.data()!;
+      final companyId = userData['companyId'];
+
+      if (companyId == null) return;
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      // Get current location
+      final locationController = Get.find<LocationController>();
+      await locationController.getCurrentLocation();
+
+      final attendanceData = {
+        'userId': user.uid,
+        'userName': userData['name'] ?? 'Unknown User',
+        'companyId': companyId,
+        'date': Timestamp.fromDate(today),
+        'checkInTime': Timestamp.fromDate(now),
+        'checkOutTime': null,
+        'checkInLocation': locationController.currentAddress.value.isNotEmpty
+            ? locationController.currentAddress.value
+            : 'Location not available',
+        'checkInLatitude': locationController.currentLocation.value?.latitude,
+        'checkInLongitude': locationController.currentLocation.value?.longitude,
+        'currentLocation': locationController.currentAddress.value.isNotEmpty
+            ? locationController.currentAddress.value
+            : 'Location not available',
+        'currentLatitude': locationController.currentLocation.value?.latitude,
+        'currentLongitude': locationController.currentLocation.value?.longitude,
+        'lastLocationUpdate': Timestamp.fromDate(now),
+        'status': 'present',
+        'totalHours': 0.0,
+        'createdAt': Timestamp.fromDate(now),
+        'updatedAt': Timestamp.fromDate(now),
+      };
+
+      await _firestore.collection('attendance').add(attendanceData);
+
+      hasCheckedInToday.value = true;
+      final formatter = DateFormat('hh:mm a');
+      lastActivity.value = 'Checked in at ${formatter.format(now)}';
+
+      Get.snackbar(
+        'Success',
+        'Checked in successfully',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+
+      // Refresh stats
+      await loadEmployeeStats();
+    } catch (e) {
+      print('Error checking in: $e');
+      Get.snackbar(
+        'Error',
+        'Failed to check in: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  Future<void> checkOut() async {
+    if (isLoading.value) return;
+
+    try {
+      isLoading.value = true;
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      // Find today's attendance record with simplified query
+      final querySnapshot = await _firestore
+          .collection('attendance')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      // Filter locally for today's unchecked out record
+      DocumentSnapshot? todayDoc;
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final date = (data['date'] as Timestamp).toDate();
+
+        if (date.year == today.year &&
+            date.month == today.month &&
+            date.day == today.day &&
+            data['checkOutTime'] == null) {
+          todayDoc = doc;
+          break;
+        }
+      }
+
+      if (todayDoc == null) {
+        Get.snackbar(
+          'Error',
+          'No check-in record found for today',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return;
+      }
+
+      final data = todayDoc.data() as Map<String, dynamic>;
+      final checkInTime = (data['checkInTime'] as Timestamp).toDate();
+
+      // Calculate total hours
+      final totalHours = now.difference(checkInTime).inMinutes / 60.0;
+
+      // Get current location for checkout
+      final locationController = Get.find<LocationController>();
+      await locationController.getCurrentLocation();
+
+      await todayDoc.reference.update({
+        'checkOutTime': Timestamp.fromDate(now),
+        'totalHours': totalHours,
+        'checkOutLocation': locationController.currentAddress.value.isNotEmpty
+            ? locationController.currentAddress.value
+            : 'Location not available',
+        'checkOutLatitude': locationController.currentLocation.value?.latitude,
+        'checkOutLongitude':
+            locationController.currentLocation.value?.longitude,
+        'lastLocation': locationController.currentAddress.value.isNotEmpty
+            ? locationController.currentAddress.value
+            : 'Location not available',
+        'lastLatitude': locationController.currentLocation.value?.latitude,
+        'lastLongitude': locationController.currentLocation.value?.longitude,
+        'lastLocationUpdate': Timestamp.fromDate(now),
+        'updatedAt': Timestamp.fromDate(now),
+      });
+
+      hasCheckedInToday.value = false;
+      final formatter = DateFormat('hh:mm a');
+      lastActivity.value =
+          'Checked out at ${formatter.format(now)} (${totalHours.toStringAsFixed(1)} hours)';
+
+      Get.snackbar(
+        'Success',
+        'Checked out successfully\nTotal hours: ${totalHours.toStringAsFixed(1)}',
+        backgroundColor: Colors.blue,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 4),
+      );
+
+      // Refresh stats
+      await loadEmployeeStats();
+    } catch (e) {
+      print('Error checking out: $e');
+      Get.snackbar(
+        'Error',
+        'Failed to check out: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Update current location for checked-in users
+  Future<void> updateCurrentLocation() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null || !hasCheckedInToday.value) return;
+
+      final today = DateTime.now();
+
+      // Find today's active attendance record with simplified query
+      final querySnapshot = await _firestore
+          .collection('attendance')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      // Filter locally for today's active record
+      DocumentSnapshot? todayDoc;
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final date = (data['date'] as Timestamp).toDate();
+
+        if (date.year == today.year &&
+            date.month == today.month &&
+            date.day == today.day &&
+            data['checkOutTime'] == null) {
+          todayDoc = doc;
+          break;
+        }
+      }
+
+      if (todayDoc != null) {
+        final locationController = Get.find<LocationController>();
+        await locationController.getCurrentLocation();
+
+        if (locationController.currentAddress.value.isNotEmpty) {
+          await todayDoc.reference.update({
+            'currentLocation': locationController.currentAddress.value,
+            'currentLatitude':
+                locationController.currentLocation.value?.latitude,
+            'currentLongitude':
+                locationController.currentLocation.value?.longitude,
+            'lastLocationUpdate': Timestamp.fromDate(DateTime.now()),
+          });
+        }
+      }
+    } catch (e) {
+      print('Error updating location: $e');
+    }
+  }
+
+  // Get employee location data for admin
+  Future<Map<String, dynamic>?> getEmployeeLocationData(String userId) async {
+    try {
+      final today = DateTime.now();
+
+      // Get all attendance records for user with simplified query
+      final attendanceQuery = await _firestore
+          .collection('attendance')
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      // Filter locally for today's records
+      DocumentSnapshot? todayActiveDoc;
+      DocumentSnapshot? todayLastDoc;
+
+      for (var doc in attendanceQuery.docs) {
+        final data = doc.data();
+        final date = (data['date'] as Timestamp).toDate();
+
+        if (date.year == today.year &&
+            date.month == today.month &&
+            date.day == today.day) {
+          if (data['checkOutTime'] == null) {
+            // User is currently checked in
+            todayActiveDoc = doc;
+            break;
+          } else {
+            // Most recent checked out record for today
+            todayLastDoc = doc;
+          }
+        }
+      }
+
+      if (todayActiveDoc != null) {
+        // User is checked in - return current location
+        final data = todayActiveDoc.data() as Map<String, dynamic>;
+        return {
+          'isActive': true,
+          'location': data['currentLocation'] ?? 'Location not available',
+          'latitude': data['currentLatitude'],
+          'longitude': data['currentLongitude'],
+          'lastUpdate': data['lastLocationUpdate'],
+          'checkInTime': data['checkInTime'],
+        };
+      } else if (todayLastDoc != null) {
+        // User checked out today - return last known location
+        final data = todayLastDoc.data() as Map<String, dynamic>;
+        return {
+          'isActive': false,
+          'location':
+              data['lastLocation'] ??
+              data['checkOutLocation'] ??
+              'No location data',
+          'latitude': data['lastLatitude'] ?? data['checkOutLatitude'],
+          'longitude': data['lastLongitude'] ?? data['checkOutLongitude'],
+          'lastUpdate': data['lastLocationUpdate'] ?? data['checkOutTime'],
+          'checkOutTime': data['checkOutTime'],
+        };
+      } else {
+        // No attendance record for today - get most recent
+        final lastQuery = await _firestore
+            .collection('attendance')
+            .where('userId', isEqualTo: userId)
+            .orderBy('date', descending: true)
+            .limit(1)
+            .get();
+
+        if (lastQuery.docs.isNotEmpty) {
+          final data = lastQuery.docs.first.data();
+          return {
+            'isActive': false,
+            'location':
+                data['lastLocation'] ??
+                data['checkOutLocation'] ??
+                'No location data',
+            'latitude': data['lastLatitude'] ?? data['checkOutLatitude'],
+            'longitude': data['lastLongitude'] ?? data['checkOutLongitude'],
+            'lastUpdate': data['lastLocationUpdate'] ?? data['checkOutTime'],
+            'checkOutTime': data['checkOutTime'],
+          };
+        }
+      }
+    } catch (e) {
+      print('Error getting employee location: $e');
+    }
+
+    return null;
+  }
+
+  // Remove employee
+  Future<void> removeEmployee(String userId) async {
+    try {
+      isLoading.value = true;
+
+      // Delete user document
+      await _firestore.collection('users').doc(userId).delete();
+
+      // Delete all attendance records
+      final attendanceQuery = await _firestore
+          .collection('attendance')
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      for (var doc in attendanceQuery.docs) {
+        await doc.reference.delete();
+      }
+
+      // Delete all leave records
+      final leaveQuery = await _firestore
+          .collection('leaves')
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      for (var doc in leaveQuery.docs) {
+        await doc.reference.delete();
+      }
+
+      // Refresh employee data
+      await loadEmployeeData();
+      await loadAdminStats();
+
+      Get.snackbar(
+        'Success',
+        'Employee removed successfully',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      print('Error removing employee: $e');
+      Get.snackbar(
+        'Error',
+        'Failed to remove employee: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Calendar related methods
+  List<Map<String, dynamic>> getEventsForDate(DateTime? date) {
+    if (date == null) return [];
+
+    // Return sample events for now - can be expanded to load from Firebase
+    return [
+      {
+        'title': 'Team Meeting',
+        'description': 'Weekly team sync',
+        'time': '10:00 AM',
+        'type': 'meeting',
+      },
+    ];
+  }
+
+  // Check if user is currently on duty (checked in but not checked out)
+  Future<bool> isUserOnDuty(String userId) async {
+    try {
+      final today = DateTime.now();
+
+      // Simplified query to get all user's attendance records
+      final querySnapshot = await _firestore
+          .collection('attendance')
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      // Filter locally for today's active records
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final date = (data['date'] as Timestamp).toDate();
+
+        if (date.year == today.year &&
+            date.month == today.month &&
+            date.day == today.day &&
+            data['checkOutTime'] == null) {
+          return true;
+        }
+      }
+
+      return false;
+    } catch (e) {
+      print('Error checking duty status for user $userId: $e');
+      return false;
+    }
+  }
+
+  // Get real-time duty status for all employees
+  Future<Map<String, bool>> getAllEmployeesDutyStatus() async {
+    final dutyStatus = <String, bool>{};
+
+    try {
+      for (final employee in allEmployees) {
+        dutyStatus[employee.id] = await isUserOnDuty(employee.id);
+      }
+    } catch (e) {
+      print('Error getting all employees duty status: $e');
+    }
+
+    return dutyStatus;
   }
 }
