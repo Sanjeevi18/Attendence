@@ -6,11 +6,14 @@ import 'firebase_options.dart';
 import 'controllers/auth_controller.dart';
 import 'controllers/holiday_controller.dart';
 import 'controllers/attendance_controller.dart';
+import 'models/user_model.dart';
 import 'views/auth/onboarding_screen.dart';
 import 'views/auth/login_screen.dart';
 import 'views/admin/admin_dashboard_screen.dart';
+import 'views/admin/employee_detail_screen.dart';
 import 'views/employee/employee_dashboard_screen.dart';
 import 'views/employee/employee_profile_screen.dart';
+import 'views/admin/admin_profile_screen.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
@@ -45,6 +48,11 @@ class LightsAttendanceApp extends StatelessWidget {
         GetPage(
           name: '/employee-profile',
           page: () => const EmployeeProfileScreen(),
+        ),
+        GetPage(name: '/admin-profile', page: () => const AdminProfileScreen()),
+        GetPage(
+          name: '/employee-detail',
+          page: () => EmployeeDetailScreen(employee: Get.arguments as User),
         ),
       ],
     );

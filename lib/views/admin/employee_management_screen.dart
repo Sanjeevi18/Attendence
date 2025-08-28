@@ -476,14 +476,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   }
 
   void _navigateToEmployeeDetails(User employee) {
-    // Navigate to employee detail screen - for now just show a snackbar
-    Get.snackbar(
-      'Employee Details',
-      '${employee.name} - ${employee.role}',
-      backgroundColor: Colors.blue,
-      colorText: Colors.white,
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    // Navigate to employee detail screen
+    Get.toNamed('/employee-detail', arguments: employee);
   }
 
   void _showCreateEmployeeDialog() {
