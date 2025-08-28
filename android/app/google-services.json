@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1037102373372",
+    "project_id": "ligths-ac17d",
+    "storage_bucket": "ligths-ac17d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1037102373372:android:4abbb5cc707ba9771a3a79",
+        "android_client_info": {
+          "package_name": "com.example.attendence"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDp-oZ9V7Sdd2nwAXvtQB7i-saKK6_gN5M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
