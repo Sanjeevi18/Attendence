@@ -13,8 +13,8 @@ class SharedCalendarWidget extends StatefulWidget {
   const SharedCalendarWidget({
     super.key,
     this.onDateSelected,
-    this.showHolidayDetails = true,
-    this.readOnly = false,
+    required this.showHolidayDetails,
+    required this.readOnly,
   });
 
   @override
@@ -72,7 +72,7 @@ class _SharedCalendarWidgetState extends State<SharedCalendarWidget> {
         lastDay: DateTime.utc(2030, 12, 31),
         focusedDay: _focusedDay,
         calendarFormat: _calendarFormat,
-        eventLoader: (day) => holidayController.getEventsForDay(day),
+        eventLoader: (day) => [], // Remove events from calendar
         startingDayOfWeek: StartingDayOfWeek.monday,
         selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
 

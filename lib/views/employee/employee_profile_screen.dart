@@ -354,46 +354,41 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
   Widget _buildAttendanceStats() {
     return _buildSection('This Month Statistics', Icons.assessment, [
       Obx(
-        () => Column(
+        () => Wrap(
+          spacing: 12, // horizontal space
+          runSpacing: 12, // vertical space
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatCard(
-                    'Present Days',
-                    '${attendanceController.employeePresentDays.value}',
-                    Colors.green,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    'Absent Days',
-                    '${attendanceController.employeeAbsentDays.value}',
-                    Colors.red,
-                  ),
-                ),
-              ],
+            SizedBox(
+              width: (MediaQuery.of(context).size.width - 32 - 12) / 2,
+              child: _buildStatCard(
+                'Present Days',
+                '${attendanceController.employeePresentDays.value}',
+                Colors.green,
+              ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatCard(
-                    'Leave Days',
-                    '${attendanceController.employeeLeaveDays.value}',
-                    Colors.orange,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatCard(
-                    'Working Hours',
-                    attendanceController.formattedWorkingHours,
-                    Colors.indigo,
-                  ),
-                ),
-              ],
+            SizedBox(
+              width: (MediaQuery.of(context).size.width - 32 - 12) / 2,
+              child: _buildStatCard(
+                'Absent Days',
+                '${attendanceController.employeeAbsentDays.value}',
+                Colors.red,
+              ),
+            ),
+            SizedBox(
+              width: (MediaQuery.of(context).size.width - 32 - 12) / 2,
+              child: _buildStatCard(
+                'Leave Days',
+                '${attendanceController.employeeLeaveDays.value}',
+                Colors.orange,
+              ),
+            ),
+            SizedBox(
+              width: (MediaQuery.of(context).size.width - 32 - 12) / 2,
+              child: _buildStatCard(
+                'Working Hours',
+                attendanceController.formattedWorkingHours,
+                Colors.indigo,
+              ),
             ),
           ],
         ),
@@ -403,7 +398,6 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
 
   Widget _buildStatCard(String title, String value, Color color) {
     return Container(
-      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),

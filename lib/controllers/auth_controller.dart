@@ -162,8 +162,12 @@ class AuthController extends GetxController {
       Get.snackbar('Success', 'Company registered successfully!');
       return true;
     } catch (e) {
-      error.value = e.toString();
-      Get.snackbar('Error', 'Registration failed: ${e.toString()}');
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+      error.value = errorMessage;
+      Get.snackbar('Registration Failed', errorMessage);
 
       // Clean up Firebase Auth user if company creation failed
       final firebaseUser = FirebaseService.getCurrentFirebaseUser();
@@ -231,8 +235,12 @@ class AuthController extends GetxController {
       Get.snackbar('Success', 'Employee "$name" created successfully!');
       return true;
     } catch (e) {
-      error.value = e.toString();
-      Get.snackbar('Error', 'Failed to create employee: ${e.toString()}');
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+      error.value = errorMessage;
+      Get.snackbar('Create Employee Failed', errorMessage);
       return false;
     } finally {
       isLoading.value = false;
@@ -290,8 +298,12 @@ class AuthController extends GetxController {
       Get.snackbar('Success', 'Welcome back, ${user.name}!');
       return true;
     } catch (e) {
-      error.value = e.toString();
-      Get.snackbar('Error', 'Login failed: ${e.toString()}');
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.substring(11);
+      }
+      error.value = errorMessage;
+      Get.snackbar('Login Failed', errorMessage);
       return false;
     } finally {
       isLoading.value = false;

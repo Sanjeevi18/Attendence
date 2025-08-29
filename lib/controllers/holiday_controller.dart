@@ -74,7 +74,7 @@ class HolidayController extends GetxController {
     required String title,
     required String description,
     required DateTime date,
-    required String type,
+    String type = 'Company',
     bool isRecurring = false,
   }) async {
     try {

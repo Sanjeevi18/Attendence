@@ -5,9 +5,10 @@ import '../../controllers/holiday_controller.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/attendance_controller.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/attendance_calendar_widget.dart';
+import '../../widgets/admin_calendar_widget.dart';
 import 'employee_management_screen.dart';
 import 'admin_profile_screen.dart';
+import 'employee_location_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -46,6 +47,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.location_on),
+            onPressed: () => Get.to(() => const EmployeeLocationScreen()),
+            tooltip: 'Employee Locations',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => holidayController.refreshHolidays(),
@@ -164,8 +170,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           ),
           const SizedBox(height: 16),
           _buildCalendarSection(),
-          const SizedBox(height: 16),
-          _buildUpcomingEvents(),
         ],
       ),
     );
@@ -305,7 +309,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: AppTheme.cardShadow,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
         border: Border.all(color: color.withOpacity(0.2)),
       ),
       child: Column(
@@ -337,7 +347,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: AppTheme.cardShadow,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,7 +407,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: AppTheme.cardShadow,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -481,7 +503,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: AppTheme.cardShadow,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -510,95 +538,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
           ),
           const SizedBox(height: 16),
-          const AttendanceCalendarWidget(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUpcomingEvents() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: AppTheme.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Upcoming Events',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.primaryColor,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildEventItem(
-            'Independence Day',
-            'August 15, 2025',
-            'National Holiday',
-            Colors.red,
-          ),
-          _buildEventItem(
-            'Company Anniversary',
-            'September 1, 2025',
-            'Company Event',
-            AppTheme.primaryColor,
-          ),
-          _buildEventItem(
-            'Team Building Event',
-            'September 15, 2025',
-            'Office Event',
-            Colors.blue,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEventItem(String title, String date, String type, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 4,
-            height: 40,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  date,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                Text(
-                  type,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: color,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const AdminCalendarWidget(),
         ],
       ),
     );
@@ -607,98 +547,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   // Action handlers
   void _viewReports() {
     Get.snackbar('Info', 'Reports feature coming soon!');
-  }
-
-  void _showAddHolidayDialog(DateTime selectedDate) {
-    final reasonController = TextEditingController();
-    final titleController = TextEditingController();
-    String selectedType = 'National';
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(
-            'Add Holiday - ${DateFormat('MMM dd, yyyy').format(selectedDate)}',
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleController,
-                decoration: const InputDecoration(
-                  labelText: 'Holiday Title *',
-                  border: OutlineInputBorder(),
-                  hintText: 'e.g., Independence Day',
-                ),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: selectedType,
-                decoration: const InputDecoration(
-                  labelText: 'Holiday Type',
-                  border: OutlineInputBorder(),
-                ),
-                items: ['National', 'Religious', 'Company', 'Other']
-                    .map(
-                      (type) =>
-                          DropdownMenuItem(value: type, child: Text(type)),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    selectedType = value!;
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: reasonController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Description *',
-                  border: OutlineInputBorder(),
-                  hintText: 'Enter holiday description...',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (titleController.text.trim().isEmpty ||
-                    reasonController.text.trim().isEmpty) {
-                  Get.snackbar('Error', 'Please fill all required fields');
-                  return;
-                }
-
-                try {
-                  await holidayController.addHoliday(
-                    title: titleController.text.trim(),
-                    description: reasonController.text.trim(),
-                    date: selectedDate,
-                    type: selectedType,
-                  );
-                  Navigator.of(context).pop();
-                  Get.snackbar('Success', 'Holiday added successfully!');
-                } catch (e) {
-                  Get.snackbar('Error', 'Failed to add holiday: $e');
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Submit'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _navigateToProfile() {

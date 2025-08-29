@@ -7,6 +7,12 @@
         android:label="attendence"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        
+        <!-- Google Maps API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyC-FQlgv_R_7F2VFm5cO1zV3o9-8qW1nZ0" />
+            
         <activity
             android:name=".MainActivity"
             android:exported="true"

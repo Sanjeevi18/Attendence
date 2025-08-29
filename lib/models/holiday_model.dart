@@ -17,13 +17,27 @@ class Holiday {
     required this.title,
     required this.description,
     required this.date,
-    required this.type,
+    this.type = 'Company',
     this.isRecurring = false,
     required this.createdAt,
     required this.createdBy,
   });
 
   Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'companyId': companyId,
+      'title': title,
+      'description': description,
+      'date': date.millisecondsSinceEpoch,
+      'type': type,
+      'isRecurring': isRecurring ? 1 : 0,
+      'createdAt': createdAt.millisecondsSinceEpoch,
+      'createdBy': createdBy,
+    };
+  }
+
+  Map<String, dynamic> toFirestore() {
     return {
       'id': id,
       'companyId': companyId,
@@ -43,14 +57,20 @@ class Holiday {
       companyId: map['companyId'] ?? '',
       title: map['title'] ?? '',
       description: map['description'] ?? '',
-      date: map['date'] is Timestamp
-          ? (map['date'] as Timestamp).toDate()
-          : DateTime.now(),
-      type: map['type'] ?? 'company',
-      isRecurring: map['isRecurring'] ?? false,
-      createdAt: map['createdAt'] is Timestamp
-          ? (map['createdAt'] as Timestamp).toDate()
-          : DateTime.now(),
+      date: map['date'] is int
+          ? DateTime.fromMillisecondsSinceEpoch(map['date'])
+          : (map['date'] is Timestamp
+                ? (map['date'] as Timestamp).toDate()
+                : DateTime.now()),
+      type: map['type'] ?? 'Company',
+      isRecurring: map['isRecurring'] is int
+          ? map['isRecurring'] == 1
+          : (map['isRecurring'] ?? false),
+      createdAt: map['createdAt'] is int
+          ? DateTime.fromMillisecondsSinceEpoch(map['createdAt'])
+          : (map['createdAt'] is Timestamp
+                ? (map['createdAt'] as Timestamp).toDate()
+                : DateTime.now()),
       createdBy: map['createdBy'] ?? '',
     );
   }

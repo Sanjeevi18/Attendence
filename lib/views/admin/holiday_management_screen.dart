@@ -75,7 +75,7 @@ class _HolidayManagementScreenState extends State<HolidayManagementScreen> {
           lastDay: DateTime.utc(2030, 12, 31),
           focusedDay: _focusedDay,
           calendarFormat: _calendarFormat,
-          eventLoader: (day) => holidayController.getEventsForDay(day),
+          eventLoader: (day) => [], // Remove events from calendar
           startingDayOfWeek: StartingDayOfWeek.monday,
           selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
 

@@ -23,15 +23,23 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   Map<String, bool> employeeDutyStatus = {};
   Map<String, Map<String, dynamic>?> employeeLocationData = {};
   bool isLoading = true;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadEmployees();
+    // Set up periodic refresh every 30 seconds for real-time updates
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        _loadEmployeeDutyStatus();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     super.dispose();
   }
 
@@ -42,9 +50,16 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       final companyId = authController.currentCompanyId;
       if (companyId != null) {
         final users = await FirebaseService.getUsersByCompany(companyId);
+
+        // Remove duplicates by using a Map with userId as key
+        final Map<String, User> uniqueUsers = {};
+        for (final user in users) {
+          uniqueUsers[user.id] = user;
+        }
+
         setState(() {
-          // Show both employees and admins
-          employees = users;
+          // Convert back to list and show both employees and admins
+          employees = uniqueUsers.values.toList();
         });
 
         // Load real-time duty status for all employees
@@ -58,6 +73,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   }
 
   Future<void> _loadEmployeeDutyStatus() async {
+    if (employees.isEmpty) return;
+
     try {
       // Update attendance controller's employee list
       attendanceController.allEmployees.value = employees;
@@ -66,15 +83,25 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       final dutyStatus = await attendanceController.getAllEmployeesDutyStatus();
       final Map<String, Map<String, dynamic>?> locationData = {};
 
-      for (final employee in employees) {
-        locationData[employee.id] = await attendanceController
-            .getEmployeeLocationData(employee.id);
+      // Load location data in parallel for better performance
+      final locationFutures = employees.map((employee) async {
+        final data = await attendanceController.getEmployeeLocationData(
+          employee.id,
+        );
+        return MapEntry(employee.id, data);
+      });
+
+      final locationResults = await Future.wait(locationFutures);
+      for (final entry in locationResults) {
+        locationData[entry.key] = entry.value;
       }
 
-      setState(() {
-        employeeDutyStatus = dutyStatus;
-        employeeLocationData = locationData;
-      });
+      if (mounted) {
+        setState(() {
+          employeeDutyStatus = dutyStatus;
+          employeeLocationData = locationData;
+        });
+      }
     } catch (e) {
       print('Error loading duty status: $e');
     }

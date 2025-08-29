@@ -401,6 +401,8 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
             onDateSelected: (date) {
               _showAttendanceDetails(date);
             },
+            showHolidayDetails: true,
+            readOnly: false,
           ),
           const SizedBox(height: 16),
           _buildCalendarLegend(),

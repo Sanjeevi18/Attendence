@@ -4,6 +4,37 @@ import '../models/user_model.dart';
 import '../models/company_model.dart';
 import '../models/holiday_model.dart';
 
+class AuthErrorMessages {
+  static String getErrorMessage(String errorCode) {
+    switch (errorCode) {
+      case 'user-not-found':
+        return 'No account found with this email address. Please check your email or create a new account.';
+      case 'wrong-password':
+        return 'Incorrect password. Please try again or reset your password.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'user-disabled':
+        return 'This account has been disabled. Please contact support.';
+      case 'too-many-requests':
+        return 'Too many failed attempts. Please wait a few minutes before trying again.';
+      case 'email-already-in-use':
+        return 'An account with this email address already exists. Please sign in instead.';
+      case 'weak-password':
+        return 'Password is too weak. Please choose a stronger password with at least 6 characters.';
+      case 'invalid-credential':
+        return 'Invalid email or password. Please check your credentials and try again.';
+      case 'network-request-failed':
+        return 'Network error. Please check your internet connection and try again.';
+      case 'operation-not-allowed':
+        return 'Email/password accounts are not enabled. Please contact support.';
+      case 'requires-recent-login':
+        return 'Please sign out and sign in again to complete this action.';
+      default:
+        return 'Something went wrong. Please try again later.';
+    }
+  }
+}
+
 class FirebaseService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static final firebase_auth.FirebaseAuth _auth =
@@ -25,8 +56,10 @@ class FirebaseService {
         email: email,
         password: password,
       );
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      throw Exception(AuthErrorMessages.getErrorMessage(e.code));
     } catch (e) {
-      throw Exception('Failed to create account: ${e.toString()}');
+      throw Exception('Something went wrong. Please try again later.');
     }
   }
 
@@ -39,8 +72,10 @@ class FirebaseService {
         email: email,
         password: password,
       );
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      throw Exception(AuthErrorMessages.getErrorMessage(e.code));
     } catch (e) {
-      throw Exception('Failed to sign in: ${e.toString()}');
+      throw Exception('Something went wrong. Please try again later.');
     }
   }
 
