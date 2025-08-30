@@ -72,6 +72,14 @@ class _EnhancedAttendanceCalendarWidgetState
           .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
           .get();
 
+      // Also load approved leave requests for focused month
+      final leaveRequestQuery = await FirebaseFirestore.instance
+          .collection('leave_requests')
+          .where('userId', isEqualTo: user.id)
+          .where('companyId', isEqualTo: user.companyId)
+          .where('status', isEqualTo: 'approved')
+          .get();
+
       final Map<DateTime, AttendanceRecord> attendanceMap = {};
 
       // Process attendance records
@@ -119,6 +127,40 @@ class _EnhancedAttendanceCalendarWidgetState
         );
 
         attendanceMap[dateKey] = record;
+      }
+
+      // Process approved leave request records
+      for (var doc in leaveRequestQuery.docs) {
+        final data = doc.data();
+        final fromDate = (data['fromDate'] as Timestamp).toDate();
+        final toDate = (data['toDate'] as Timestamp).toDate();
+
+        // Generate records for each day in the leave request range
+        for (
+          DateTime date = fromDate;
+          date.isBefore(toDate.add(const Duration(days: 1)));
+          date = date.add(const Duration(days: 1))
+        ) {
+          final dateKey = DateTime(date.year, date.month, date.day);
+
+          // Only add if it's within the focused month
+          if (dateKey.year == _focusedDay.year &&
+              dateKey.month == _focusedDay.month) {
+            AttendanceRecord record = AttendanceRecord(
+              date: dateKey,
+              checkInTime: null,
+              checkOutTime: null,
+              checkInLocation: 'On Leave',
+              checkOutLocation: 'On Leave',
+              totalHours: 0.0,
+              status: 'approved_leave',
+              leaveType: data['leaveType'] ?? 'Unknown',
+              leaveReason: data['reason'] ?? 'No reason provided',
+            );
+
+            attendanceMap[dateKey] = record;
+          }
+        }
       }
 
       setState(() {
@@ -180,165 +222,234 @@ class _EnhancedAttendanceCalendarWidgetState
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
+      child: SizedBox(
+        height:
+            MediaQuery.of(context).size.height *
+            0.75, // Reduce to 75% of screen height
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.calendar_month, color: Colors.black),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Attendance Calendar',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+              // Header
+              Row(
+                children: [
+                  const Icon(Icons.calendar_month, color: Colors.black),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Attendance Calendar',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
                   ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, color: Colors.grey),
+                    onPressed: () {
+                      _loadAttendanceData();
+                      holidayController.loadHolidays();
+                    },
+                    tooltip: 'Refresh calendar data',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Color Legend
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Color Legend:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 4,
+                      children: [
+                        _buildLegendItem('On Duty', Colors.green),
+                        _buildLegendItem('Off Duty', Colors.red),
+                        _buildLegendItem('Leave Types', Colors.blue),
+                        _buildLegendItem('Work From Home', Colors.purple),
+                        _buildLegendItem('Holidays', Colors.deepPurple),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.grey),
-                onPressed: () {
-                  _loadAttendanceData();
-                  holidayController.loadHolidays();
+              const SizedBox(height: 16),
+
+              // Calendar
+              TableCalendar<dynamic>(
+                firstDay: DateTime.utc(2020, 1, 1),
+                lastDay: DateTime.utc(2030, 12, 31),
+                focusedDay: _focusedDay,
+                selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                eventLoader: (day) {
+                  List<dynamic> events = [];
+
+                  // Add attendance record if exists
+                  final record = _attendanceData[day];
+                  if (record != null) {
+                    events.add(record);
+                  }
+
+                  // Add holidays if exist
+                  final holidays = holidayController.getEventsForDay(day);
+                  events.addAll(holidays);
+
+                  return events;
                 },
-                tooltip: 'Refresh calendar data',
+                calendarFormat: CalendarFormat.month,
+                availableCalendarFormats: const {CalendarFormat.month: 'Month'},
+                startingDayOfWeek: StartingDayOfWeek.monday,
+                calendarStyle: CalendarStyle(
+                  outsideDaysVisible: false,
+                  weekendTextStyle: const TextStyle(color: Colors.red),
+                  selectedDecoration: const BoxDecoration(
+                    color: Colors.black,
+                    shape: BoxShape.circle,
+                  ),
+                  todayDecoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  markerDecoration: const BoxDecoration(
+                    color: Colors.green,
+                    shape: BoxShape.circle,
+                  ),
+                  markersMaxCount: 1,
+                ),
+                onDaySelected: (selectedDay, focusedDay) {
+                  setState(() {
+                    _selectedDay = selectedDay;
+                    _focusedDay = focusedDay;
+                    _selectedDayRecord = _attendanceData[selectedDay];
+                  });
+                },
+                onPageChanged: (focusedDay) {
+                  setState(() {
+                    _focusedDay = focusedDay;
+                  });
+                  _loadAttendanceData();
+                },
+                calendarBuilders: CalendarBuilders(
+                  markerBuilder: (context, day, events) {
+                    if (events.isNotEmpty) {
+                      List<Widget> markers = [];
+
+                      // Check for attendance record
+                      final attendanceRecord = events
+                          .whereType<AttendanceRecord>()
+                          .firstOrNull;
+                      if (attendanceRecord != null) {
+                        Color markerColor;
+                        if (attendanceRecord.status == 'present' &&
+                            attendanceRecord.checkOutTime != null) {
+                          markerColor = Colors.green; // On duty - Green
+                        } else if (attendanceRecord.status == 'present' &&
+                            attendanceRecord.checkOutTime == null) {
+                          markerColor =
+                              Colors.orange; // Checked in but not out - Orange
+                        } else if (attendanceRecord.status ==
+                            'approved_leave') {
+                          // Different colors for different leave types
+                          if (attendanceRecord.leaveType?.toLowerCase() ==
+                                  'workfromhome' ||
+                              attendanceRecord.leaveType?.toLowerCase() ==
+                                  'work from home') {
+                            markerColor =
+                                Colors.purple; // Work From Home - Purple
+                          } else {
+                            markerColor =
+                                Colors.blue; // Other leave types - Blue
+                          }
+                        } else if (attendanceRecord.status == 'leave') {
+                          // Legacy leave records
+                          if (attendanceRecord.leaveType?.toLowerCase() ==
+                                  'workfromhome' ||
+                              attendanceRecord.leaveType?.toLowerCase() ==
+                                  'work from home') {
+                            markerColor =
+                                Colors.purple; // Work From Home - Purple
+                          } else {
+                            markerColor =
+                                Colors.blue; // Other leave types - Blue
+                          }
+                        } else if (attendanceRecord.status == 'absent') {
+                          markerColor = Colors.red; // Off duty/Absent - Red
+                        } else {
+                          markerColor = Colors.grey; // Unknown status - Grey
+                        }
+
+                        markers.add(
+                          Positioned(
+                            bottom: 1,
+                            left: 0,
+                            child: Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: markerColor,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      // Check for holidays
+                      final holidays = events.whereType<Holiday>().toList();
+                      if (holidays.isNotEmpty) {
+                        markers.add(
+                          Positioned(
+                            bottom: 1,
+                            right: 0,
+                            child: Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: Colors.purple,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+
+                      return Stack(children: markers);
+                    }
+                    return null;
+                  },
+                ),
               ),
+
+              const SizedBox(height: 20),
+
+              // Selected Day Details
+              if (_selectedDay != null) _buildSelectedDayDetails(),
+
+              const SizedBox(height: 20),
+
+              // Attendance Records List
+              _buildAttendanceRecordsList(),
             ],
           ),
-          const SizedBox(height: 16),
-
-          // Calendar
-          TableCalendar<dynamic>(
-            firstDay: DateTime.utc(2020, 1, 1),
-            lastDay: DateTime.utc(2030, 12, 31),
-            focusedDay: _focusedDay,
-            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-            eventLoader: (day) {
-              List<dynamic> events = [];
-
-              // Add attendance record if exists
-              final record = _attendanceData[day];
-              if (record != null) {
-                events.add(record);
-              }
-
-              // Add holidays if exist
-              final holidays = holidayController.getEventsForDay(day);
-              events.addAll(holidays);
-
-              return events;
-            },
-            calendarFormat: CalendarFormat.month,
-            availableCalendarFormats: const {CalendarFormat.month: 'Month'},
-            startingDayOfWeek: StartingDayOfWeek.monday,
-            calendarStyle: CalendarStyle(
-              outsideDaysVisible: false,
-              weekendTextStyle: const TextStyle(color: Colors.red),
-              selectedDecoration: const BoxDecoration(
-                color: Colors.black,
-                shape: BoxShape.circle,
-              ),
-              todayDecoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                shape: BoxShape.circle,
-              ),
-              markerDecoration: const BoxDecoration(
-                color: Colors.green,
-                shape: BoxShape.circle,
-              ),
-              markersMaxCount: 1,
-            ),
-            onDaySelected: (selectedDay, focusedDay) {
-              setState(() {
-                _selectedDay = selectedDay;
-                _focusedDay = focusedDay;
-                _selectedDayRecord = _attendanceData[selectedDay];
-              });
-            },
-            onPageChanged: (focusedDay) {
-              setState(() {
-                _focusedDay = focusedDay;
-              });
-              _loadAttendanceData();
-            },
-            calendarBuilders: CalendarBuilders(
-              markerBuilder: (context, day, events) {
-                if (events.isNotEmpty) {
-                  List<Widget> markers = [];
-
-                  // Check for attendance record
-                  final attendanceRecord = events
-                      .whereType<AttendanceRecord>()
-                      .firstOrNull;
-                  if (attendanceRecord != null) {
-                    Color markerColor;
-                    if (attendanceRecord.status == 'present' &&
-                        attendanceRecord.checkOutTime != null) {
-                      markerColor = Colors.green;
-                    } else if (attendanceRecord.status == 'present' &&
-                        attendanceRecord.checkOutTime == null) {
-                      markerColor = Colors.orange; // Checked in but not out
-                    } else if (attendanceRecord.status == 'leave') {
-                      markerColor = Colors.blue;
-                    } else {
-                      markerColor = Colors.red;
-                    }
-
-                    markers.add(
-                      Positioned(
-                        bottom: 1,
-                        left: 0,
-                        child: Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: markerColor,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-
-                  // Check for holidays
-                  final holidays = events.whereType<Holiday>().toList();
-                  if (holidays.isNotEmpty) {
-                    markers.add(
-                      Positioned(
-                        bottom: 1,
-                        right: 0,
-                        child: Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: Colors.purple,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-
-                  return Stack(children: markers);
-                }
-                return null;
-              },
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Selected Day Details
-          if (_selectedDay != null) _buildSelectedDayDetails(),
-
-          const SizedBox(height: 20),
-
-          // Attendance Records List
-          _buildAttendanceRecordsList(),
-        ],
+        ),
       ),
     );
   }
@@ -435,26 +546,32 @@ class _EnhancedAttendanceCalendarWidgetState
             // Attendance details
             _buildDetailRow(
               'Status',
-              record.status.toUpperCase(),
+              record.status == 'approved_leave'
+                  ? 'APPROVED LEAVE'
+                  : record.status.toUpperCase(),
               _getStatusIcon(record.status),
-              _getStatusColor(record.status),
+              _getStatusColorByLeaveType(record.status, record.leaveType),
             ),
 
-            if (record.status == 'leave') ...[
+            if (record.status == 'leave' ||
+                record.status == 'approved_leave') ...[
               // Leave specific information
               const SizedBox(height: 8),
               _buildDetailRow(
                 'Leave Type',
                 record.leaveType ?? 'Unknown',
-                Icons.category,
-                Colors.blue,
+                record.leaveType?.toLowerCase() == 'workfromhome' ||
+                        record.leaveType?.toLowerCase() == 'work from home'
+                    ? Icons.home_work
+                    : Icons.category,
+                _getStatusColorByLeaveType(record.status, record.leaveType),
               ),
               const SizedBox(height: 8),
               _buildDetailRow(
                 'Reason',
                 record.leaveReason ?? 'No reason provided',
                 Icons.note,
-                Colors.blue,
+                _getStatusColorByLeaveType(record.status, record.leaveType),
               ),
             ] else if (record.status == 'present') ...[
               // Attendance specific information
@@ -553,6 +670,8 @@ class _EnhancedAttendanceCalendarWidgetState
         return Icons.cancel;
       case 'leave':
         return Icons.event_available;
+      case 'approved_leave':
+        return Icons.event_available;
       default:
         return Icons.help;
     }
@@ -561,14 +680,29 @@ class _EnhancedAttendanceCalendarWidgetState
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'present':
-        return Colors.green;
+        return Colors.green; // On duty - Green
       case 'absent':
-        return Colors.red;
+        return Colors.red; // Off duty/Absent - Red
       case 'leave':
-        return Colors.blue;
+        return Colors.blue; // Leave types - Blue
+      case 'approved_leave':
+        return Colors.blue; // Approved leave types - Blue
       default:
-        return Colors.grey;
+        return Colors.grey; // Unknown - Grey
     }
+  }
+
+  Color _getStatusColorByLeaveType(String status, String? leaveType) {
+    if (status.toLowerCase() == 'approved_leave' ||
+        status.toLowerCase() == 'leave') {
+      if (leaveType?.toLowerCase() == 'workfromhome' ||
+          leaveType?.toLowerCase() == 'work from home') {
+        return Colors.purple; // Work From Home - Purple
+      } else {
+        return Colors.blue; // Other leave types - Blue
+      }
+    }
+    return _getStatusColor(status);
   }
 
   Widget _buildAttendanceRecordsList() {
@@ -626,16 +760,16 @@ class _EnhancedAttendanceCalendarWidgetState
 
         // Records List
         Container(
+          height: 300, // Limit height to prevent overflow
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.grey.withOpacity(0.3)),
           ),
           child: ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: sortedEntries.length > 10
-                ? 10
-                : sortedEntries.length, // Show max 10 records
+            padding: EdgeInsets.zero,
+            itemCount: sortedEntries.length > 5
+                ? 5
+                : sortedEntries.length, // Show max 5 records to save space
             separatorBuilder: (context, index) =>
                 Divider(height: 1, color: Colors.grey.withOpacity(0.3)),
             itemBuilder: (context, index) {
@@ -653,12 +787,18 @@ class _EnhancedAttendanceCalendarWidgetState
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: _getStatusColor(record.status).withOpacity(0.1),
+                      color: _getStatusColorByLeaveType(
+                        record.status,
+                        record.leaveType,
+                      ).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
                       _getStatusIcon(record.status),
-                      color: _getStatusColor(record.status),
+                      color: _getStatusColorByLeaveType(
+                        record.status,
+                        record.leaveType,
+                      ),
                       size: 20,
                     ),
                   ),
@@ -699,7 +839,8 @@ class _EnhancedAttendanceCalendarWidgetState
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (record.status == 'leave') ...[
+                      if (record.status == 'leave' ||
+                          record.status == 'approved_leave') ...[
                         Text(
                           '${record.leaveType ?? 'Leave'}: ${record.leaveReason ?? 'No reason provided'}',
                           style: TextStyle(
@@ -766,16 +907,27 @@ class _EnhancedAttendanceCalendarWidgetState
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(record.status).withOpacity(0.1),
+                      color: _getStatusColorByLeaveType(
+                        record.status,
+                        record.leaveType,
+                      ).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: _getStatusColor(record.status).withOpacity(0.3),
+                        color: _getStatusColorByLeaveType(
+                          record.status,
+                          record.leaveType,
+                        ).withOpacity(0.3),
                       ),
                     ),
                     child: Text(
-                      record.status.toUpperCase(),
+                      record.status == 'approved_leave'
+                          ? 'APPROVED'
+                          : record.status.toUpperCase(),
                       style: TextStyle(
-                        color: _getStatusColor(record.status),
+                        color: _getStatusColorByLeaveType(
+                          record.status,
+                          record.leaveType,
+                        ),
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
                       ),
@@ -797,15 +949,30 @@ class _EnhancedAttendanceCalendarWidgetState
           ),
         ),
 
-        if (sortedEntries.length > 10) ...[
+        if (sortedEntries.length > 5) ...[
           const SizedBox(height: 8),
           Center(
             child: Text(
-              'Showing 10 of ${sortedEntries.length} records',
+              'Showing 5 of ${sortedEntries.length} records',
               style: TextStyle(color: Colors.grey[600], fontSize: 12),
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 11)),
       ],
     );
   }

@@ -22,6 +22,10 @@ class LeaveRequestController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // Initialize with no loading state
+    isLoading.value = false;
+    error.value = '';
+
     loadUserLeaveRequests();
     if (_authController.currentUser.value?.isAdmin == true) {
       loadPendingLeaveRequests();
@@ -34,11 +38,19 @@ class LeaveRequestController extends GetxController {
     super.onClose();
   }
 
+  void resetLoadingState() {
+    isLoading.value = false;
+    error.value = '';
+  }
+
   Future<void> loadUserLeaveRequests() async {
     try {
       isLoading.value = true;
       final user = _authController.currentUser.value;
-      if (user == null) return;
+      if (user == null) {
+        error.value = 'User not found';
+        return;
+      }
 
       // Use a simpler query to avoid index requirements
       final querySnapshot = await _firestore
@@ -54,6 +66,7 @@ class LeaveRequestController extends GetxController {
             ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       userLeaveRequests.value = requests;
+      error.value = ''; // Clear any previous errors
     } catch (e) {
       error.value = 'Failed to load leave requests: $e';
       print('Error loading user leave requests: $e');

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/attendance_controller.dart';
 import '../../models/user_model.dart';
+import '../../theme/app_theme.dart';
 
 class EmployeeProfileScreen extends StatefulWidget {
   const EmployeeProfileScreen({super.key});
@@ -18,6 +22,9 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
     AttendanceController(),
   );
   bool isEditing = false;
+  File? _selectedImage;
+  bool _isUploadingImage = false;
+  final ImagePicker _imagePicker = ImagePicker();
 
   // Controllers for editing
   final _nameController = TextEditingController();
@@ -92,9 +99,10 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         title: const Text('My Profile'),
-        backgroundColor: Colors.indigo,
+        backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -155,35 +163,45 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
 
   Widget _buildProfileHeader(User user) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Colors.indigo, Colors.indigoAccent],
+          colors: [AppTheme.primaryColor, AppTheme.primaryColorLight],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.indigo.withOpacity(0.3),
+            color: AppTheme.primaryColor.withOpacity(0.3),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
         ],
       ),
-      child: Column(
+      child: Row(
         children: [
           Stack(
             children: [
               CircleAvatar(
-                radius: 60,
+                radius: 50,
                 backgroundColor: Colors.white,
-                child: user.profileImage != null
+                child: _selectedImage != null
+                    ? ClipOval(
+                        child: Image.file(
+                          _selectedImage!,
+                          width: 100,
+                          height: 100,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    : user.profileImage != null
                     ? ClipOval(
                         child: Image.network(
                           user.profileImage!,
-                          width: 120,
-                          height: 120,
+                          width: 100,
+                          height: 100,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) {
                             return _buildDefaultAvatar(user);
@@ -198,51 +216,76 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                   right: 0,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.orange,
+                      color: AppTheme.secondaryColor,
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                     ),
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.camera_alt,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      onPressed: _changeProfilePicture,
-                    ),
+                    child: _isUploadingImage
+                        ? Container(
+                            width: 32,
+                            height: 32,
+                            padding: const EdgeInsets.all(6),
+                            child: const CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : IconButton(
+                            icon: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                            onPressed: _changeProfilePicture,
+                          ),
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            user.name,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.name,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    user.role.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  authController.currentCompany.value?.name ?? 'Company',
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  user.email,
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              user.role.toUpperCase(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            authController.currentCompany.value?.name ?? 'Company',
-            style: const TextStyle(color: Colors.white70, fontSize: 16),
           ),
         ],
       ),
@@ -253,8 +296,8 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
     return Text(
       user.name.substring(0, 1).toUpperCase(),
       style: const TextStyle(
-        color: Colors.indigo,
-        fontSize: 48,
+        color: AppTheme.primaryColor,
+        fontSize: 40,
         fontWeight: FontWeight.bold,
       ),
     );
@@ -352,82 +395,156 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
   }
 
   Widget _buildAttendanceStats() {
-    return _buildSection('This Month Statistics', Icons.assessment, [
-      Obx(
-        () => Wrap(
-          spacing: 12, // horizontal space
-          runSpacing: 12, // vertical space
-          children: [
-            SizedBox(
-              width: (MediaQuery.of(context).size.width - 32 - 12) / 2,
-              child: _buildStatCard(
-                'Present Days',
-                '${attendanceController.employeePresentDays.value}',
-                Colors.green,
-              ),
-            ),
-            SizedBox(
-              width: (MediaQuery.of(context).size.width - 32 - 12) / 2,
-              child: _buildStatCard(
-                'Absent Days',
-                '${attendanceController.employeeAbsentDays.value}',
-                Colors.red,
-              ),
-            ),
-            SizedBox(
-              width: (MediaQuery.of(context).size.width - 32 - 12) / 2,
-              child: _buildStatCard(
-                'Leave Days',
-                '${attendanceController.employeeLeaveDays.value}',
-                Colors.orange,
-              ),
-            ),
-            SizedBox(
-              width: (MediaQuery.of(context).size.width - 32 - 12) / 2,
-              child: _buildStatCard(
-                'Working Hours',
-                attendanceController.formattedWorkingHours,
-                Colors.indigo,
-              ),
-            ),
-          ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppTheme.accentColor, Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppTheme.cardShadow,
       ),
-    ]);
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.assessment,
+                  color: AppTheme.primaryColor,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'This Month Statistics',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Obx(
+            () => Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildHorizontalStatCard(
+                        'Present Days',
+                        '${attendanceController.employeePresentDays.value}',
+                        AppTheme.successColor,
+                        Icons.check_circle_outline,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildHorizontalStatCard(
+                        'Absent Days',
+                        '${attendanceController.employeeAbsentDays.value}',
+                        AppTheme.errorColor,
+                        Icons.cancel_outlined,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildHorizontalStatCard(
+                        'Leave Days',
+                        '${attendanceController.employeeLeaveDays.value}',
+                        AppTheme.warningColor,
+                        Icons.event_busy_outlined,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildHorizontalStatCard(
+                        'Working Hours',
+                        attendanceController.formattedWorkingHours,
+                        AppTheme.primaryColorLight,
+                        Icons.access_time_outlined,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  Widget _buildStatCard(String title, String value, Color color) {
+  Widget _buildHorizontalStatCard(
+    String title,
+    String value,
+    Color color,
+    IconData icon,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-            textAlign: TextAlign.center,
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 12,
-              color: color,
-              fontWeight: FontWeight.w500,
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: color.withOpacity(0.8),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -439,16 +556,13 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: const LinearGradient(
+          colors: [Colors.white, AppTheme.accentColor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        boxShadow: AppTheme.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -458,10 +572,10 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.indigo.withOpacity(0.1),
+                  color: AppTheme.primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, color: Colors.indigo, size: 24),
+                child: Icon(icon, color: AppTheme.primaryColor, size: 24),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -470,7 +584,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.indigo,
+                    color: AppTheme.primaryColor,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -502,7 +616,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
         keyboardType: keyboardType,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(icon, color: Colors.indigo),
+          prefixIcon: Icon(icon, color: AppTheme.primaryColor),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: Colors.grey[300]!),
@@ -513,7 +627,10 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.indigo, width: 2),
+            borderSide: const BorderSide(
+              color: AppTheme.primaryColor,
+              width: 2,
+            ),
           ),
           filled: true,
           fillColor: isEditing && !readOnly ? Colors.white : Colors.grey[50],
@@ -543,9 +660,9 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
         readOnly: true,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(icon, color: Colors.indigo),
+          prefixIcon: Icon(icon, color: AppTheme.primaryColor),
           suffixIcon: isEditing && !readOnly
-              ? const Icon(Icons.calendar_today, color: Colors.indigo)
+              ? const Icon(Icons.calendar_today, color: AppTheme.primaryColor)
               : null,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -557,7 +674,10 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.indigo, width: 2),
+            borderSide: const BorderSide(
+              color: AppTheme.primaryColor,
+              width: 2,
+            ),
           ),
           filled: true,
           fillColor: isEditing && !readOnly ? Colors.white : Colors.grey[50],
@@ -584,7 +704,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
           labelText: 'Blood Group',
           prefixIcon: const Icon(
             Icons.bloodtype_outlined,
-            color: Colors.indigo,
+            color: AppTheme.primaryColor,
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -596,7 +716,10 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.indigo, width: 2),
+            borderSide: const BorderSide(
+              color: AppTheme.primaryColor,
+              width: 2,
+            ),
           ),
           filled: true,
           fillColor: isEditing ? Colors.white : Colors.grey[50],
@@ -627,16 +750,13 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: const LinearGradient(
+          colors: [Colors.white, AppTheme.accentColor],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        boxShadow: AppTheme.cardShadow,
       ),
       child: Column(
         children: [
@@ -645,10 +765,14 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
+                  color: AppTheme.errorColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.logout, color: Colors.red, size: 24),
+                child: const Icon(
+                  Icons.logout,
+                  color: AppTheme.errorColor,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
               const Text(
@@ -656,7 +780,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Colors.red,
+                  color: AppTheme.errorColor,
                 ),
               ),
             ],
@@ -676,7 +800,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                 ),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: AppTheme.errorColor,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -701,7 +825,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Colors.indigo,
+              primary: AppTheme.primaryColor,
               onPrimary: Colors.white,
             ),
           ),
@@ -723,7 +847,178 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
   }
 
   void _changeProfilePicture() {
-    Get.snackbar('Info', 'Profile picture change feature coming soon!');
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Select Profile Picture',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildImageSourceOption(
+                  'Camera',
+                  Icons.camera_alt,
+                  () => _pickImage(ImageSource.camera),
+                ),
+                _buildImageSourceOption(
+                  'Gallery',
+                  Icons.photo_library,
+                  () => _pickImage(ImageSource.gallery),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageSourceOption(
+    String title,
+    IconData icon,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppTheme.accentColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: AppTheme.primaryColorLight.withOpacity(0.3),
+          ),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: AppTheme.primaryColor, size: 30),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      Navigator.pop(context); // Close the bottom sheet
+
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 70,
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+        });
+
+        // Automatically upload the image
+        await _uploadProfileImage();
+      }
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to pick image: $e',
+        backgroundColor: AppTheme.errorColor,
+        colorText: Colors.white,
+      );
+    }
+  }
+
+  Future<void> _uploadProfileImage() async {
+    if (_selectedImage == null) return;
+
+    setState(() {
+      _isUploadingImage = true;
+    });
+
+    try {
+      final user = authController.currentUser.value;
+      if (user == null) {
+        throw Exception('User not found');
+      }
+
+      // Create a reference to Firebase Storage
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('profile_pictures')
+          .child('${user.id}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+
+      // Upload the file
+      final uploadTask = storageRef.putFile(_selectedImage!);
+      final snapshot = await uploadTask;
+
+      // Get the download URL
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      // Update the user's profile image URL in Firestore
+      await authController.updateUserProfileImage(downloadUrl);
+
+      Get.snackbar(
+        'Success',
+        'Profile picture updated successfully!',
+        backgroundColor: AppTheme.successColor,
+        colorText: Colors.white,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to upload image: $e',
+        backgroundColor: AppTheme.errorColor,
+        colorText: Colors.white,
+      );
+
+      // Reset the selected image on error
+      setState(() {
+        _selectedImage = null;
+      });
+    } finally {
+      setState(() {
+        _isUploadingImage = false;
+      });
+    }
   }
 
   void _saveProfile() {
@@ -763,7 +1058,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
               authController.logout();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: AppTheme.errorColor,
               foregroundColor: Colors.white,
             ),
             child: const Text('Logout'),

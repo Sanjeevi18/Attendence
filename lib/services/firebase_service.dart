@@ -315,4 +315,18 @@ class FirebaseService {
       return false;
     }
   }
+
+  // Update user profile image URL
+  static Future<void> updateUserProfileImage(
+    String userId,
+    String imageUrl,
+  ) async {
+    try {
+      await _firestore.collection(_usersCollection).doc(userId).update({
+        'profileImage': imageUrl,
+      });
+    } catch (e) {
+      throw Exception('Failed to update profile image: $e');
+    }
+  }
 }

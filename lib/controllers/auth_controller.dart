@@ -455,4 +455,26 @@ class AuthController extends GetxController {
       currentCompany.value != null &&
       currentUser.value!.isActive &&
       currentCompany.value!.isActive;
+
+  // Update user profile image
+  Future<void> updateUserProfileImage(String imageUrl) async {
+    try {
+      if (currentUser.value == null) {
+        throw Exception('No user logged in');
+      }
+
+      // Update in Firestore
+      await FirebaseService.updateUserProfileImage(
+        currentUser.value!.id,
+        imageUrl,
+      );
+
+      // Update local user object
+      final updatedUser = currentUser.value!.copyWith(profileImage: imageUrl);
+      currentUser.value = updatedUser;
+    } catch (e) {
+      print('Error updating profile image: $e');
+      rethrow;
+    }
+  }
 }

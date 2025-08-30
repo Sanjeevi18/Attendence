@@ -78,7 +78,13 @@ enum LeaveType {
   maternity('Maternity Leave'),
   paternity('Paternity Leave'),
   emergency('Emergency Leave'),
-  unpaid('Unpaid Leave');
+  personal('Personal Leave'),
+  bereavement('Bereavement Leave'),
+  medical('Medical Leave'),
+  study('Study Leave'),
+  compensatory('Compensatory Leave'),
+  unpaid('Unpaid Leave'),
+  workFromHome('Work From Home');
 
   const LeaveType(this.displayName);
   final String displayName;
@@ -87,19 +93,31 @@ enum LeaveType {
   IconData get icon {
     switch (this) {
       case LeaveType.sick:
-        return Icons.local_hospital;
+        return Icons.sick;
       case LeaveType.casual:
         return Icons.beach_access;
       case LeaveType.annual:
-        return Icons.calendar_month;
+        return Icons.event_available;
       case LeaveType.maternity:
         return Icons.child_care;
       case LeaveType.paternity:
         return Icons.family_restroom;
       case LeaveType.emergency:
         return Icons.emergency;
+      case LeaveType.personal:
+        return Icons.person;
+      case LeaveType.bereavement:
+        return Icons.favorite_border;
+      case LeaveType.medical:
+        return Icons.local_hospital;
+      case LeaveType.study:
+        return Icons.school;
+      case LeaveType.compensatory:
+        return Icons.access_time;
       case LeaveType.unpaid:
         return Icons.money_off;
+      case LeaveType.workFromHome:
+        return Icons.home_work;
     }
   }
 
@@ -107,19 +125,31 @@ enum LeaveType {
   Color get color {
     switch (this) {
       case LeaveType.sick:
-        return Colors.red;
+        return Colors.red.shade600;
       case LeaveType.casual:
-        return Colors.blue;
+        return Colors.blue.shade600;
       case LeaveType.annual:
-        return Colors.green;
+        return Colors.green.shade600;
       case LeaveType.maternity:
-        return Colors.pink;
+        return Colors.pink.shade600;
       case LeaveType.paternity:
-        return Colors.indigo;
+        return Colors.indigo.shade600;
       case LeaveType.emergency:
-        return Colors.orange;
+        return Colors.orange.shade600;
+      case LeaveType.personal:
+        return Colors.teal.shade600;
+      case LeaveType.bereavement:
+        return Colors.grey.shade700;
+      case LeaveType.medical:
+        return Colors.red.shade700;
+      case LeaveType.study:
+        return Colors.amber.shade700;
+      case LeaveType.compensatory:
+        return Colors.cyan.shade600;
       case LeaveType.unpaid:
-        return Colors.grey;
+        return Colors.grey.shade600;
+      case LeaveType.workFromHome:
+        return Colors.purple.shade600;
     }
   }
 }
