@@ -23,7 +23,6 @@ class _EnhancedAttendanceCalendarWidgetState
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   Map<DateTime, AttendanceRecord> _attendanceData = {};
-  AttendanceRecord? _selectedDayRecord;
   bool _isLoading = false;
 
   @override
@@ -165,7 +164,6 @@ class _EnhancedAttendanceCalendarWidgetState
 
       setState(() {
         _attendanceData = attendanceMap;
-        _selectedDayRecord = _attendanceData[_selectedDay];
       });
     } catch (e) {
       print('Error loading attendance data: $e');
@@ -196,11 +194,18 @@ class _EnhancedAttendanceCalendarWidgetState
         child: const Center(
           child: Column(
             children: [
-              CircularProgressIndicator(),
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                strokeWidth: 3,
+              ),
               SizedBox(height: 16),
               Text(
                 'Loading attendance data...',
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(
+                  color: Colors.black54,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w300,
+                ),
               ),
             ],
           ),
@@ -258,41 +263,6 @@ class _EnhancedAttendanceCalendarWidgetState
               ),
               const SizedBox(height: 16),
 
-              // Color Legend
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Color Legend:',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 16,
-                      runSpacing: 4,
-                      children: [
-                        _buildLegendItem('On Duty', Colors.green),
-                        _buildLegendItem('Off Duty', Colors.red),
-                        _buildLegendItem('Leave Types', Colors.blue),
-                        _buildLegendItem('Work From Home', Colors.purple),
-                        _buildLegendItem('Holidays', Colors.deepPurple),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
               // Calendar
               TableCalendar<dynamic>(
                 firstDay: DateTime.utc(2020, 1, 1),
@@ -311,6 +281,24 @@ class _EnhancedAttendanceCalendarWidgetState
                   // Add holidays if exist
                   final holidays = holidayController.getEventsForDay(day);
                   events.addAll(holidays);
+
+                  // Add Sunday as default holiday
+                  if (day.weekday == DateTime.sunday) {
+                    events.add(
+                      Holiday(
+                        id: 'sunday_${day.toIso8601String().split('T')[0]}',
+                        companyId:
+                            authController.currentUser.value?.companyId ?? '',
+                        title: 'Sunday',
+                        description: 'Weekly Holiday',
+                        date: day,
+                        type: 'weekly',
+                        isRecurring: true,
+                        createdAt: DateTime.now(),
+                        createdBy: 'system',
+                      ),
+                    );
+                  }
 
                   return events;
                 },
@@ -338,7 +326,6 @@ class _EnhancedAttendanceCalendarWidgetState
                   setState(() {
                     _selectedDay = selectedDay;
                     _focusedDay = focusedDay;
-                    _selectedDayRecord = _attendanceData[selectedDay];
                   });
                 },
                 onPageChanged: (focusedDay) {
@@ -423,7 +410,7 @@ class _EnhancedAttendanceCalendarWidgetState
                               width: 6,
                               height: 6,
                               decoration: const BoxDecoration(
-                                color: Colors.purple,
+                                color: Colors.pink,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -440,13 +427,18 @@ class _EnhancedAttendanceCalendarWidgetState
 
               const SizedBox(height: 20),
 
-              // Selected Day Details
-              if (_selectedDay != null) _buildSelectedDayDetails(),
+              // Selected Day Details (re-added with enhanced info)
+              if (_selectedDay != null) _buildEnhancedDayDetails(),
 
               const SizedBox(height: 20),
 
-              // Attendance Records List
-              _buildAttendanceRecordsList(),
+              // Calendar Legend at the bottom
+              _buildCalendarLegend(),
+
+              const SizedBox(height: 20),
+
+              // Recent Attendance Records
+              _buildAttendanceRecords(),
             ],
           ),
         ),
@@ -454,10 +446,86 @@ class _EnhancedAttendanceCalendarWidgetState
     );
   }
 
-  Widget _buildSelectedDayDetails() {
+  Widget _buildAttendanceRecords() {
+    // Get recent attendance records (last 7 days)
+    final now = DateTime.now();
+    final recentRecords = <AttendanceRecord>[];
+
+    for (int i = 6; i >= 0; i--) {
+      final date = now.subtract(Duration(days: i));
+      final record = _attendanceData[DateTime(date.year, date.month, date.day)];
+      if (record != null) {
+        recentRecords.add(record);
+      }
+    }
+
+    if (recentRecords.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.withOpacity(0.3)),
+        ),
+        child: const Column(
+          children: [
+            Icon(Icons.history, size: 48, color: Colors.grey),
+            SizedBox(height: 8),
+            Text(
+              'No recent attendance records',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.history, color: Colors.black),
+              SizedBox(width: 8),
+              Text(
+                'Recent Attendance (Last 7 Days)',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: recentRecords.length,
+            separatorBuilder: (context, index) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final record = recentRecords[index];
+              return _buildAttendanceRecordItem(record);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnhancedDayDetails() {
     final selectedDate = _selectedDay!;
-    final record = _selectedDayRecord;
+    final record = _attendanceData[selectedDate];
     final holidays = holidayController.getEventsForDay(selectedDate);
+    final isToday = isSameDay(selectedDate, DateTime.now());
+    final isFutureDate = selectedDate.isAfter(DateTime.now());
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -482,6 +550,27 @@ class _EnhancedAttendanceCalendarWidgetState
                   color: Colors.black,
                 ),
               ),
+              if (isToday) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    'Today',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -530,18 +619,33 @@ class _EnhancedAttendanceCalendarWidgetState
             const SizedBox(height: 12),
           ],
 
-          if (record == null) ...[
-            // No record for this day
-            const Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.grey, size: 18),
-                SizedBox(width: 8),
-                Text(
-                  'No attendance record for this day',
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
-                ),
-              ],
+          // Future Date - Show N/A
+          if (isFutureDate) ...[
+            _buildDetailRow('Status', 'N/A', Icons.help, Colors.grey),
+            const SizedBox(height: 8),
+            _buildDetailRow('Check In Time', 'N/A', Icons.login, Colors.grey),
+            const SizedBox(height: 8),
+            _buildDetailRow('Check Out Time', 'N/A', Icons.logout, Colors.grey),
+            const SizedBox(height: 8),
+            _buildDetailRow('Duration', 'N/A', Icons.timer, Colors.grey),
+            const SizedBox(height: 8),
+            _buildDetailRow('Location', 'N/A', Icons.location_on, Colors.grey),
+          ] else if (record == null) ...[
+            // No record for this day - Show N/A
+            _buildDetailRow(
+              'Status',
+              'No Record',
+              Icons.info_outline,
+              Colors.grey,
             ),
+            const SizedBox(height: 8),
+            _buildDetailRow('Check In Time', 'N/A', Icons.login, Colors.grey),
+            const SizedBox(height: 8),
+            _buildDetailRow('Check Out Time', 'N/A', Icons.logout, Colors.grey),
+            const SizedBox(height: 8),
+            _buildDetailRow('Duration', 'N/A', Icons.timer, Colors.grey),
+            const SizedBox(height: 8),
+            _buildDetailRow('Location', 'N/A', Icons.location_on, Colors.grey),
           ] else ...[
             // Attendance details
             _buildDetailRow(
@@ -573,58 +677,75 @@ class _EnhancedAttendanceCalendarWidgetState
                 Icons.note,
                 _getStatusColorByLeaveType(record.status, record.leaveType),
               ),
+              const SizedBox(height: 8),
+              _buildDetailRow('Check In Time', 'N/A', Icons.login, Colors.grey),
+              const SizedBox(height: 8),
+              _buildDetailRow(
+                'Check Out Time',
+                'N/A',
+                Icons.logout,
+                Colors.grey,
+              ),
+              const SizedBox(height: 8),
+              _buildDetailRow('Duration', 'N/A', Icons.timer, Colors.grey),
+              const SizedBox(height: 8),
+              _buildDetailRow(
+                'Location',
+                'N/A',
+                Icons.location_on,
+                Colors.grey,
+              ),
             ] else if (record.status == 'present') ...[
               // Attendance specific information
-              if (record.checkInTime != null) ...[
-                const SizedBox(height: 8),
-                _buildDetailRow(
-                  'Check In',
-                  DateFormat('HH:mm').format(record.checkInTime!),
-                  Icons.login,
-                  Colors.green,
-                ),
-                const SizedBox(height: 8),
-                _buildDetailRow(
-                  'Check In Location',
-                  record.checkInLocation,
-                  Icons.location_on,
-                  Colors.blue,
-                ),
-              ],
-
+              const SizedBox(height: 8),
+              _buildDetailRow(
+                'Check In Time',
+                record.checkInTime != null
+                    ? DateFormat('HH:mm').format(record.checkInTime!)
+                    : 'N/A',
+                Icons.login,
+                record.checkInTime != null ? Colors.green : Colors.grey,
+              ),
+              const SizedBox(height: 8),
+              _buildDetailRow(
+                'Check Out Time',
+                record.checkOutTime != null
+                    ? DateFormat('HH:mm').format(record.checkOutTime!)
+                    : (record.checkInTime != null ? 'Still Checked In' : 'N/A'),
+                Icons.logout,
+                record.checkOutTime != null
+                    ? Colors.red
+                    : (record.checkInTime != null
+                          ? Colors.orange
+                          : Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              _buildDetailRow(
+                'Duration',
+                _calculateDuration(record.checkInTime, record.checkOutTime),
+                Icons.timer,
+                record.totalHours > 0 ? Colors.purple : Colors.grey,
+              ),
+              const SizedBox(height: 8),
+              _buildDetailRow(
+                'Check In Location',
+                record.checkInLocation.isNotEmpty
+                    ? record.checkInLocation
+                    : 'N/A',
+                Icons.location_on,
+                record.checkInLocation.isNotEmpty ? Colors.blue : Colors.grey,
+              ),
               if (record.checkOutTime != null) ...[
                 const SizedBox(height: 8),
                 _buildDetailRow(
-                  'Check Out',
-                  DateFormat('HH:mm').format(record.checkOutTime!),
-                  Icons.logout,
-                  Colors.red,
-                ),
-                const SizedBox(height: 8),
-                _buildDetailRow(
                   'Check Out Location',
-                  record.checkOutLocation,
+                  record.checkOutLocation.isNotEmpty
+                      ? record.checkOutLocation
+                      : 'N/A',
                   Icons.location_on,
-                  Colors.blue,
-                ),
-                const SizedBox(height: 8),
-                _buildDetailRow(
-                  'Duration',
-                  '${record.totalHours.toStringAsFixed(1)} hours',
-                  Icons.timer,
-                  Colors.purple,
-                ),
-              ] else if (record.checkInTime != null) ...[
-                const SizedBox(height: 8),
-                const Row(
-                  children: [
-                    Icon(Icons.warning, color: Colors.orange, size: 18),
-                    SizedBox(width: 8),
-                    Text(
-                      'Still checked in',
-                      style: TextStyle(color: Colors.orange, fontSize: 14),
-                    ),
-                  ],
+                  record.checkOutLocation.isNotEmpty
+                      ? Colors.blue
+                      : Colors.grey,
                 ),
               ],
             ],
@@ -632,6 +753,24 @@ class _EnhancedAttendanceCalendarWidgetState
         ],
       ),
     );
+  }
+
+  String _calculateDuration(DateTime? checkIn, DateTime? checkOut) {
+    if (checkIn == null) return 'N/A';
+
+    final endTime = checkOut ?? DateTime.now();
+    final duration = endTime.difference(checkIn);
+
+    if (duration.inMinutes < 1) return '0 minutes';
+
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else {
+      return '${minutes}m';
+    }
   }
 
   Widget _buildDetailRow(
@@ -680,15 +819,15 @@ class _EnhancedAttendanceCalendarWidgetState
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'present':
-        return Colors.green; // On duty - Green
+        return Colors.green;
       case 'absent':
-        return Colors.red; // Off duty/Absent - Red
+        return Colors.red;
       case 'leave':
-        return Colors.blue; // Leave types - Blue
+        return Colors.blue;
       case 'approved_leave':
-        return Colors.blue; // Approved leave types - Blue
+        return Colors.blue;
       default:
-        return Colors.grey; // Unknown - Grey
+        return Colors.grey;
     }
   }
 
@@ -697,268 +836,224 @@ class _EnhancedAttendanceCalendarWidgetState
         status.toLowerCase() == 'leave') {
       if (leaveType?.toLowerCase() == 'workfromhome' ||
           leaveType?.toLowerCase() == 'work from home') {
-        return Colors.purple; // Work From Home - Purple
+        return Colors.purple;
       } else {
-        return Colors.blue; // Other leave types - Blue
+        return Colors.blue;
       }
     }
     return _getStatusColor(status);
   }
 
-  Widget _buildAttendanceRecordsList() {
-    if (_attendanceData.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.withOpacity(0.3)),
-        ),
-        child: const Center(
-          child: Column(
-            children: [
-              Icon(Icons.event_note, color: Colors.grey, size: 32),
-              SizedBox(height: 8),
-              Text(
-                'No attendance records found',
-                style: TextStyle(color: Colors.grey, fontSize: 14),
-              ),
-            ],
-          ),
-        ),
-      );
+  Widget _buildAttendanceRecordItem(AttendanceRecord record) {
+    final dateFormat = DateFormat('MMM dd, yyyy');
+    final timeFormat = DateFormat('hh:mm a');
+
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+
+    if (record.status == 'present') {
+      statusColor = Colors.green;
+      statusIcon = Icons.check_circle;
+      statusText = 'Present';
+    } else if (record.status == 'leave') {
+      statusColor =
+          record.leaveType?.toLowerCase() == 'workfromhome' ||
+              record.leaveType?.toLowerCase() == 'work from home'
+          ? Colors.purple
+          : Colors.blue;
+      statusIcon = Icons.event_busy;
+      statusText = record.leaveType ?? 'Leave';
+    } else if (record.status == 'absent') {
+      statusColor = Colors.red;
+      statusIcon = Icons.cancel;
+      statusText = 'Absent';
+    } else {
+      statusColor = Colors.grey;
+      statusIcon = Icons.help_outline;
+      statusText = record.status.toUpperCase();
     }
 
-    // Sort records by date (most recent first)
-    final sortedEntries = _attendanceData.entries.toList()
-      ..sort((a, b) => b.key.compareTo(a.key));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Header
-        Row(
-          children: [
-            const Icon(Icons.list_alt, color: Colors.black),
-            const SizedBox(width: 8),
-            const Text(
-              'Recent Attendance Records',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '${_attendanceData.length} records',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-
-        // Records List
-        Container(
-          height: 300, // Limit height to prevent overflow
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.withOpacity(0.3)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: statusColor.withOpacity(0.1),
+            child: Icon(statusIcon, color: statusColor, size: 16),
           ),
-          child: ListView.separated(
-            padding: EdgeInsets.zero,
-            itemCount: sortedEntries.length > 5
-                ? 5
-                : sortedEntries.length, // Show max 5 records to save space
-            separatorBuilder: (context, index) =>
-                Divider(height: 1, color: Colors.grey.withOpacity(0.3)),
-            itemBuilder: (context, index) {
-              final entry = sortedEntries[index];
-              final date = entry.key;
-              final record = entry.value;
-              final isToday = isSameDay(date, DateTime.now());
-
-              return Container(
-                color: isToday
-                    ? Colors.blue.withOpacity(0.05)
-                    : Colors.transparent,
-                child: ListTile(
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: _getStatusColorByLeaveType(
-                        record.status,
-                        record.leaveType,
-                      ).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      _getStatusIcon(record.status),
-                      color: _getStatusColorByLeaveType(
-                        record.status,
-                        record.leaveType,
-                      ),
-                      size: 20,
-                    ),
-                  ),
-                  title: Row(
-                    children: [
-                      Text(
-                        DateFormat('MMM dd, yyyy').format(date),
-                        style: TextStyle(
-                          fontWeight: isToday
-                              ? FontWeight.bold
-                              : FontWeight.w500,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        dateFormat.format(record.date),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
                           fontSize: 14,
                         ),
                       ),
-                      if (isToday) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.blue,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Text(
-                            'Today',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: statusColor.withOpacity(0.3)),
+                      ),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
-                    ],
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                if (record.status == 'present') ...[
+                  Row(
                     children: [
-                      if (record.status == 'leave' ||
-                          record.status == 'approved_leave') ...[
+                      if (record.checkInTime != null) ...[
+                        Icon(Icons.login, size: 12, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
                         Text(
-                          '${record.leaveType ?? 'Leave'}: ${record.leaveReason ?? 'No reason provided'}',
+                          'In: ${timeFormat.format(record.checkInTime!)}',
                           style: TextStyle(
                             color: Colors.grey[600],
-                            fontSize: 12,
+                            fontSize: 11,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      if (record.checkOutTime != null) ...[
+                        Icon(Icons.logout, size: 12, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Out: ${timeFormat.format(record.checkOutTime!)}',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 11,
                           ),
                         ),
                       ] else ...[
-                        Row(
-                          children: [
-                            if (record.checkInTime != null) ...[
-                              Icon(Icons.login, size: 12, color: Colors.green),
-                              const SizedBox(width: 4),
-                              Text(
-                                DateFormat('HH:mm').format(record.checkInTime!),
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                            if (record.checkInTime != null &&
-                                record.checkOutTime != null)
-                              Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                ),
-                                width: 4,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[400],
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            if (record.checkOutTime != null) ...[
-                              Icon(Icons.logout, size: 12, color: Colors.red),
-                              const SizedBox(width: 4),
-                              Text(
-                                DateFormat(
-                                  'HH:mm',
-                                ).format(record.checkOutTime!),
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        if (record.totalHours > 0)
-                          Text(
-                            '${record.totalHours.toStringAsFixed(1)} hours',
-                            style: TextStyle(
-                              color: Colors.grey[500],
-                              fontSize: 11,
-                            ),
+                        Text(
+                          'Still on duty',
+                          style: TextStyle(
+                            color: Colors.orange[700],
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
                           ),
+                        ),
                       ],
                     ],
                   ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getStatusColorByLeaveType(
-                        record.status,
-                        record.leaveType,
-                      ).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _getStatusColorByLeaveType(
-                          record.status,
-                          record.leaveType,
-                        ).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Text(
-                      record.status == 'approved_leave'
-                          ? 'APPROVED'
-                          : record.status.toUpperCase(),
-                      style: TextStyle(
-                        color: _getStatusColorByLeaveType(
-                          record.status,
-                          record.leaveType,
+                  if (record.totalHours > 0) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 12,
+                          color: Colors.grey[600],
                         ),
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Duration: ${record.totalHours.toStringAsFixed(1)}h',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ),
+                  ],
+                ] else if (record.status == 'leave' &&
+                    record.leaveReason != null) ...[
+                  Text(
+                    record.leaveReason!,
+                    style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  onTap: () {
-                    setState(() {
-                      _selectedDay = date;
-                      _selectedDayRecord = record;
-                    });
-                  },
-                ),
-              );
-            },
-          ),
-        ),
-
-        if (sortedEntries.length > 5) ...[
-          const SizedBox(height: 8),
-          Center(
-            child: Text(
-              'Showing 5 of ${sortedEntries.length} records',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ],
+              ],
             ),
           ),
         ],
-      ],
+      ),
+    );
+  }
+
+  Widget _buildCalendarLegend() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Calendar Legend',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // First row
+          Row(
+            children: [
+              Expanded(
+                child: _buildLegendItem('Present (Full Day)', Colors.green),
+              ),
+              Expanded(
+                child: _buildLegendItem('Present (Partial)', Colors.orange),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Second row
+          Row(
+            children: [
+              Expanded(child: _buildLegendItem('Leave', Colors.blue)),
+              Expanded(
+                child: _buildLegendItem('Work From Home', Colors.purple),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Third row
+          Row(
+            children: [
+              Expanded(child: _buildLegendItem('Absent', Colors.red)),
+              Expanded(child: _buildLegendItem('Holiday/Sunday', Colors.pink)),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -971,8 +1066,11 @@ class _EnhancedAttendanceCalendarWidgetState
           height: 12,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 11)),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: Colors.black87),
+        ),
       ],
     );
   }

@@ -19,6 +19,117 @@ class LeaveRequestController extends GetxController {
   final RxBool isLoading = false.obs;
   final RxString error = ''.obs;
 
+  // Filter for recent leave requests
+  final RxString selectedStatusFilter =
+      'all'.obs; // all, pending, approved, rejected
+
+  // Get all leave types except Work From Home for reason dropdown
+  List<LeaveType> get leaveTypesForReasons =>
+      LeaveType.values.where((type) => type != LeaveType.workFromHome).toList();
+
+  // Get predefined reasons based on leave type
+  List<String> getLeaveReasons(LeaveType leaveType) {
+    switch (leaveType) {
+      case LeaveType.sick:
+        return [
+          'Fever and flu symptoms',
+          'Doctor appointment',
+          'Medical treatment',
+          'Recovery from illness',
+          'Health checkup',
+          'Other medical reasons',
+        ];
+      case LeaveType.casual:
+        return [
+          'Personal work',
+          'Family function',
+          'Rest and relaxation',
+          'Personal commitment',
+          'Other personal reasons',
+        ];
+      case LeaveType.annual:
+        return [
+          'Vacation with family',
+          'Holiday trip',
+          'Annual break',
+          'Personal time off',
+          'Other vacation reasons',
+        ];
+      case LeaveType.maternity:
+        return [
+          'Maternity leave - delivery',
+          'Prenatal care',
+          'Postnatal care',
+          'Baby care',
+          'Medical complications',
+        ];
+      case LeaveType.paternity:
+        return [
+          'Paternity leave - new born',
+          'Supporting spouse',
+          'Baby care assistance',
+          'Family support',
+        ];
+      case LeaveType.emergency:
+        return [
+          'Family emergency',
+          'Medical emergency',
+          'Urgent personal matter',
+          'Unexpected situation',
+          'Other emergency',
+        ];
+      case LeaveType.personal:
+        return [
+          'Personal development',
+          'Family matters',
+          'Personal commitments',
+          'Self care',
+          'Other personal needs',
+        ];
+      case LeaveType.bereavement:
+        return [
+          'Death in immediate family',
+          'Death of relative',
+          'Funeral attendance',
+          'Mourning period',
+          'Family support during loss',
+        ];
+      case LeaveType.medical:
+        return [
+          'Surgery',
+          'Medical procedure',
+          'Extended medical treatment',
+          'Recovery period',
+          'Specialist consultation',
+        ];
+      case LeaveType.study:
+        return [
+          'Examination',
+          'Course attendance',
+          'Educational program',
+          'Training session',
+          'Academic commitment',
+        ];
+      case LeaveType.compensatory:
+        return [
+          'Overtime compensation',
+          'Weekend work compensation',
+          'Holiday work compensation',
+          'Extra hours worked',
+        ];
+      case LeaveType.unpaid:
+        return [
+          'Extended personal leave',
+          'Financial constraints',
+          'Personal sabbatical',
+          'Family care',
+          'Other unpaid leave reasons',
+        ];
+      default:
+        return ['Other'];
+    }
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -58,14 +169,29 @@ class LeaveRequestController extends GetxController {
           .where('userId', isEqualTo: user.id)
           .get();
 
-      // Sort manually by createdAt in memory to avoid index requirement
-      final requests =
-          querySnapshot.docs
-              .map((doc) => LeaveRequest.fromMap(doc.data(), doc.id))
-              .toList()
-            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      // Filter out cancelled/deleted requests and apply status filter
+      final allRequests = querySnapshot.docs
+          .map((doc) => LeaveRequest.fromMap(doc.data(), doc.id))
+          .where(
+            (request) =>
+                request.status != 'cancelled' && request.status != 'deleted',
+          )
+          .toList();
 
-      userLeaveRequests.value = requests;
+      // Apply status filter
+      List<LeaveRequest> filteredRequests;
+      if (selectedStatusFilter.value == 'all') {
+        filteredRequests = allRequests;
+      } else {
+        filteredRequests = allRequests
+            .where((request) => request.status == selectedStatusFilter.value)
+            .toList();
+      }
+
+      // Sort manually by createdAt in memory to avoid index requirement
+      filteredRequests.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      userLeaveRequests.value = filteredRequests;
       error.value = ''; // Clear any previous errors
     } catch (e) {
       error.value = 'Failed to load leave requests: $e';
@@ -73,6 +199,29 @@ class LeaveRequestController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  // Method to update status filter and reload data
+  void updateStatusFilter(String status) {
+    selectedStatusFilter.value = status;
+    loadUserLeaveRequests();
+  }
+
+  // Get filtered leave requests count for each status
+  Map<String, int> getLeaveRequestCounts() {
+    final counts = <String, int>{
+      'all': 0,
+      'pending': 0,
+      'approved': 0,
+      'rejected': 0,
+    };
+
+    for (final request in userLeaveRequests) {
+      counts['all'] = counts['all']! + 1;
+      counts[request.status] = (counts[request.status] ?? 0) + 1;
+    }
+
+    return counts;
   }
 
   Future<void> loadPendingLeaveRequests() async {
@@ -245,17 +394,15 @@ class LeaveRequestController extends GetxController {
     }
   }
 
-  Future<bool> cancelLeaveRequest(String requestId) async {
+  Future<bool> deleteLeaveRequest(String requestId) async {
     try {
       isLoading.value = true;
 
-      await _firestore.collection('leave_requests').doc(requestId).update({
-        'status': 'cancelled',
-      });
+      await _firestore.collection('leave_requests').doc(requestId).delete();
 
       Get.snackbar(
         'Success',
-        'Leave request cancelled',
+        'Leave request deleted',
         backgroundColor: Colors.blue,
         colorText: Colors.white,
         snackPosition: SnackPosition.BOTTOM,
@@ -264,10 +411,10 @@ class LeaveRequestController extends GetxController {
       await loadUserLeaveRequests();
       return true;
     } catch (e) {
-      error.value = 'Failed to cancel request: $e';
+      error.value = 'Failed to delete request: $e';
       Get.snackbar(
         'Error',
-        'Failed to cancel request: $e',
+        'Failed to delete request: $e',
         backgroundColor: Colors.red,
         colorText: Colors.white,
         snackPosition: SnackPosition.BOTTOM,
@@ -284,8 +431,6 @@ class LeaveRequestController extends GetxController {
         return Colors.green;
       case 'rejected':
         return Colors.red;
-      case 'cancelled':
-        return Colors.grey;
       case 'pending':
       default:
         return Colors.orange;
@@ -298,8 +443,6 @@ class LeaveRequestController extends GetxController {
         return Icons.check_circle;
       case 'rejected':
         return Icons.cancel;
-      case 'cancelled':
-        return Icons.block;
       case 'pending':
       default:
         return Icons.schedule;

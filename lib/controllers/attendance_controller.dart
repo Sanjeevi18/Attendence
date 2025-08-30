@@ -239,6 +239,23 @@ class AttendanceController extends GetxController {
     return '${employeeWorkingHours.value}h';
   }
 
+  // Auto-refresh statistics every minute when on duty
+  Timer? _statsRefreshTimer;
+
+  void _startStatisticsAutoRefresh() {
+    _statsRefreshTimer?.cancel();
+    _statsRefreshTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      if (onDuty.value) {
+        loadEmployeeStats(); // Refresh stats while on duty
+      }
+    });
+  }
+
+  void _stopStatisticsAutoRefresh() {
+    _statsRefreshTimer?.cancel();
+    _statsRefreshTimer = null;
+  }
+
   // Attendance tracking
   final RxBool hasCheckedInToday = false.obs;
   final RxString lastActivity = ''.obs;
@@ -252,6 +269,7 @@ class AttendanceController extends GetxController {
   @override
   void onClose() {
     _workingTimeTimer?.cancel();
+    _statsRefreshTimer?.cancel();
     super.onClose();
   }
 
@@ -282,38 +300,29 @@ class AttendanceController extends GetxController {
       if (user == null) return;
 
       final today = DateTime.now();
+      final todayStr =
+          '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
-      // Simplified query - get all user's attendance records
+      // Check for today's attendance record without endTime (still checked in)
       final querySnapshot = await _firestore
           .collection('attendance')
-          .where('userId', isEqualTo: user.uid)
+          .where('employeeId', isEqualTo: user.uid)
+          .where('date', isEqualTo: todayStr)
+          .where('endTime', isEqualTo: null)
           .get();
 
-      // Filter locally for today's records
-      bool foundTodayCheckin = false;
+      bool foundTodayCheckin = querySnapshot.docs.isNotEmpty;
       DateTime? todayCheckInTime;
 
-      for (var doc in querySnapshot.docs) {
-        final data = doc.data();
-        final date = (data['date'] as Timestamp).toDate();
-
-        // Check if this is today's record
-        if (date.year == today.year &&
-            date.month == today.month &&
-            date.day == today.day) {
-          // Check if user hasn't checked out yet
-          if (data['checkOutTime'] == null) {
-            foundTodayCheckin = true;
-            if (data['checkInTime'] != null) {
-              todayCheckInTime = (data['checkInTime'] as Timestamp).toDate();
-            }
-            break;
-          }
+      if (foundTodayCheckin) {
+        final data = querySnapshot.docs.first.data();
+        if (data['startTime'] != null) {
+          todayCheckInTime = (data['startTime'] as Timestamp).toDate();
         }
       }
 
       hasCheckedInToday.value = foundTodayCheckin;
-      onDuty.value = foundTodayCheckin; // Update on-duty status
+      onDuty.value = foundTodayCheckin;
 
       if (hasCheckedInToday.value && todayCheckInTime != null) {
         checkInTime.value = todayCheckInTime;
@@ -335,114 +344,135 @@ class AttendanceController extends GetxController {
       isLoading.value = true;
 
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-
-      final userDoc = await _firestore.collection('users').doc(user.uid).get();
-
-      if (!userDoc.exists) return;
-
-      final userData = userDoc.data()!;
-      final companyId = userData['companyId'];
-
-      if (companyId == null) return;
-
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-
-      // Start work session with location tracking
-      final locationController = Get.find<LocationController>();
-      final workStarted = await locationController.startWork();
-
-      if (!workStarted) {
+      if (user == null) {
         Get.snackbar(
           'Error',
-          'Unable to start work session. Please check location permissions.',
+          'User not authenticated',
           backgroundColor: Colors.red,
           colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
         );
         return;
       }
 
-      // Get current location after starting work
-      await locationController.getCurrentLocation();
+      // Get user data from AuthController instead of Firestore
+      final currentUser = authController.currentUser.value;
+      if (currentUser == null) {
+        Get.snackbar(
+          'Error',
+          'User data not found. Please login again.',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+        return;
+      }
 
-      final attendanceData = {
-        'userId': user.uid,
-        'userName': userData['name'] ?? 'Unknown User',
-        'companyId': companyId,
-        'date': Timestamp.fromDate(today),
-        'checkInTime': Timestamp.fromDate(now),
-        'checkOutTime': null,
-        'checkInLocation': locationController.currentAddress.value.isNotEmpty
-            ? locationController.currentAddress.value
-            : 'Location not available',
-        'checkInLatitude': locationController.currentLocation.value?.latitude,
-        'checkInLongitude': locationController.currentLocation.value?.longitude,
-        'currentLocation': locationController.currentAddress.value.isNotEmpty
-            ? locationController.currentAddress.value
-            : 'Location not available',
-        'currentLatitude': locationController.currentLocation.value?.latitude,
-        'currentLongitude': locationController.currentLocation.value?.longitude,
-        'lastLocationUpdate': Timestamp.fromDate(now),
-        'status': 'on_duty', // Changed to on_duty status
-        'totalHours': 0.0,
-        'isTracking': true,
-        'isOnDuty': true, // New field for on-duty status
-        'createdAt': Timestamp.fromDate(now),
-        'updatedAt': Timestamp.fromDate(now),
-      };
+      final companyId = currentUser.companyId;
+      if (companyId.isEmpty) {
+        Get.snackbar(
+          'Error',
+          'Company information not found',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+        return;
+      }
 
-      // Add attendance record
-      await _firestore.collection('attendance').add(attendanceData);
+      // Check if already checked in today
+      final today = DateTime.now();
+      final todayStr =
+          '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
-      // Send location update to admin via admin notifications collection
-      await _sendLocationToAdmin(
-        user.uid,
-        userData['name'] ?? 'Unknown User',
-        companyId,
-        locationController,
-        now,
-      );
+      final existingAttendance = await _firestore
+          .collection('attendance')
+          .where('employeeId', isEqualTo: user.uid)
+          .where('date', isEqualTo: todayStr)
+          .where('endTime', isEqualTo: null)
+          .get();
 
-      // Update user's current status in users collection for real-time admin updates
-      await _firestore.collection('users').doc(user.uid).update({
+      if (existingAttendance.docs.isNotEmpty) {
+        Get.snackbar(
+          'Already Checked In',
+          'You are already checked in for today',
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+        );
+        return;
+      }
+
+      // Get current location data from LocationController (without changing location code)
+      final locationController = Get.find<LocationController>();
+      final currentLocation = locationController.currentLocation.value;
+      final currentAddress = locationController.currentAddress.value;
+
+      Map<String, dynamic> locationData = {};
+      if (currentLocation != null) {
+        locationData = {
+          'latitude': currentLocation.latitude,
+          'longitude': currentLocation.longitude,
+          'address': currentAddress,
+          'timestamp': FieldValue.serverTimestamp(),
+        };
+      }
+
+      // 1. Update employee status to on_duty (like React Native startWork)
+      await _firestore.collection('employees').doc(user.uid).set({
+        'isActive': true,
+        'lastUpdated': FieldValue.serverTimestamp(),
+        'status': 'on_duty',
+        'statusMessage': 'Employee is on duty',
+        'employeeName': currentUser.name,
+        'department': currentUser.department ?? 'Unknown',
+        'currentLocation': locationData,
+      }, SetOptions(merge: true));
+
+      // 2. Update employee status collection (like React Native)
+      await _firestore.collection('employeeStatus').doc(user.uid).set({
+        'employeeId': user.uid,
+        'employeeName': currentUser.name,
+        'department': currentUser.department ?? 'Unknown',
+        'companyId': currentUser.companyId,
         'isOnDuty': true,
-        'lastCheckIn': Timestamp.fromDate(now),
-        'currentLocation': locationController.currentAddress.value.isNotEmpty
-            ? locationController.currentAddress.value
-            : 'Location not available',
-        'currentLatitude': locationController.currentLocation.value?.latitude,
-        'currentLongitude': locationController.currentLocation.value?.longitude,
-        'lastLocationUpdate': Timestamp.fromDate(now),
-        'onDutyStatus': 'checked_in',
-        'statusUpdatedAt': Timestamp.fromDate(now),
+        'status': 'On Duty',
+        'location': locationData.isNotEmpty
+            ? {
+                'latitude': locationData['latitude'],
+                'longitude': locationData['longitude'],
+                'address': locationData['address'],
+              }
+            : {},
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // 3. Create attendance record (like React Native)
+      await _firestore.collection('attendance').add({
+        'employeeId': user.uid,
+        'employeeName': currentUser.name,
+        'startTime': FieldValue.serverTimestamp(),
+        'date': todayStr,
+        'endTime': null,
+        'status': 'Present',
+        'location': locationData,
       });
 
-      // Create admin notification
-      await _createAdminNotification(
-        companyId,
-        '${userData['name']} has checked in',
-        'Employee ${userData['name']} started work at ${DateFormat('HH:mm').format(now)}',
-        'check_in',
-        user.uid,
-      );
+      // 4. Start location tracking (preserving existing location code)
+      await locationController.startLocationTracking();
 
+      // Update local state
       hasCheckedInToday.value = true;
-      checkInTime.value = now;
+      checkInTime.value = today;
       final formatter = DateFormat('hh:mm a');
-      lastActivity.value = 'Checked in at ${formatter.format(now)}';
-      onDuty.value = true; // Update on-duty status
+      lastActivity.value = 'Checked in at ${formatter.format(today)}';
+      onDuty.value = true;
 
-      // Start live working time tracking
+      // Start live working time tracking and statistics refresh
       _startWorkingTimeTimer();
+      _startStatisticsAutoRefresh();
 
       Get.snackbar(
         'Success',
-        'Checked in successfully - Location tracking started',
+        'Checked in successfully! Your location is being tracked.',
         backgroundColor: Colors.green,
         colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 3),
       );
 
@@ -455,7 +485,6 @@ class AttendanceController extends GetxController {
         'Failed to check in: $e',
         backgroundColor: Colors.red,
         colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
       isLoading.value = false;
@@ -469,119 +498,110 @@ class AttendanceController extends GetxController {
       isLoading.value = true;
 
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-
-      // End work session and stop location tracking
-      final locationController = Get.find<LocationController>();
-      await locationController.endWork();
-
-      // Find today's attendance record with simplified query
-      final querySnapshot = await _firestore
-          .collection('attendance')
-          .where('userId', isEqualTo: user.uid)
-          .get();
-
-      // Filter locally for today's unchecked out record
-      DocumentSnapshot? todayDoc;
-      for (var doc in querySnapshot.docs) {
-        final data = doc.data();
-        final date = (data['date'] as Timestamp).toDate();
-
-        if (date.year == today.year &&
-            date.month == today.month &&
-            date.day == today.day &&
-            data['checkOutTime'] == null) {
-          todayDoc = doc;
-          break;
-        }
-      }
-
-      if (todayDoc == null) {
+      if (user == null) {
         Get.snackbar(
           'Error',
-          'No check-in record found for today',
+          'User not authenticated',
           backgroundColor: Colors.red,
           colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM,
         );
         return;
       }
 
-      final data = todayDoc.data() as Map<String, dynamic>;
-      final originalCheckInTime = (data['checkInTime'] as Timestamp).toDate();
+      // Check if not checked in - look for today's attendance without checkout
+      final today = DateTime.now();
+      final todayStr =
+          '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
-      // Calculate total hours
-      final totalHours = now.difference(originalCheckInTime).inMinutes / 60.0;
+      final existingAttendance = await _firestore
+          .collection('attendance')
+          .where('employeeId', isEqualTo: user.uid)
+          .where('date', isEqualTo: todayStr)
+          .get();
 
-      // Get final location for checkout
-      await locationController.getCurrentLocation();
-
-      await todayDoc.reference.update({
-        'checkOutTime': Timestamp.fromDate(now),
-        'totalHours': totalHours,
-        'checkOutLocation': locationController.currentAddress.value.isNotEmpty
-            ? locationController.currentAddress.value
-            : 'Location not available',
-        'checkOutLatitude': locationController.currentLocation.value?.latitude,
-        'checkOutLongitude':
-            locationController.currentLocation.value?.longitude,
-        'lastLocation': locationController.currentAddress.value.isNotEmpty
-            ? locationController.currentAddress.value
-            : 'Location not available',
-        'lastLatitude': locationController.currentLocation.value?.latitude,
-        'lastLongitude': locationController.currentLocation.value?.longitude,
-        'lastLocationUpdate': Timestamp.fromDate(now),
-        'isTracking': false,
-        'isOnDuty': false, // Update on-duty status
-        'status': 'completed', // Change status to completed
-        'updatedAt': Timestamp.fromDate(now),
-      });
-
-      // Update user's current status in users collection
-      final userData = data;
-      await _firestore.collection('users').doc(user.uid).update({
-        'isOnDuty': false,
-        'lastCheckOut': Timestamp.fromDate(now),
-        'currentLocation': locationController.currentAddress.value.isNotEmpty
-            ? locationController.currentAddress.value
-            : 'Location not available',
-        'currentLatitude': locationController.currentLocation.value?.latitude,
-        'currentLongitude': locationController.currentLocation.value?.longitude,
-        'lastLocationUpdate': Timestamp.fromDate(now),
-        'onDutyStatus': 'checked_out',
-        'statusUpdatedAt': Timestamp.fromDate(now),
-        'lastWorkDuration': totalHours,
-      });
-
-      // Create admin notification for check out
-      await _createAdminNotification(
-        userData['companyId'],
-        '${userData['userName']} has checked out',
-        'Employee ${userData['userName']} finished work at ${DateFormat('HH:mm').format(now)} (${totalHours.toStringAsFixed(1)} hours)',
-        'check_out',
-        user.uid,
+      print(
+        'Found ${existingAttendance.docs.length} attendance records for today',
       );
 
+      // Find attendance record without checkout time
+      DocumentSnapshot? activeAttendance;
+      for (var doc in existingAttendance.docs) {
+        // ignore: unnecessary_cast
+        final data = doc.data() as Map<String, dynamic>;
+        print('Attendance record: ${data.keys.toList()}');
+        print(
+          'checkOutTime: ${data['checkOutTime']}, endTime: ${data['endTime']}',
+        );
+
+        // Check if user hasn't checked out yet (either field being null means still checked in)
+        if (data['checkOutTime'] == null || data['endTime'] == null) {
+          activeAttendance = doc;
+          print('Found active attendance record');
+          break;
+        }
+      }
+
+      if (activeAttendance == null) {
+        Get.snackbar(
+          'Not Checked In',
+          'You are not currently checked in',
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+        );
+        return;
+      }
+
+      // 1. Stop location tracking first (like React Native endWork)
+      final locationController = Get.find<LocationController>();
+      locationController.stopLocationTracking();
+
+      // 2. Update employee status to off_duty (like React Native)
+      await _firestore.collection('employees').doc(user.uid).update({
+        'isActive': false,
+        'lastUpdated': FieldValue.serverTimestamp(),
+        'status': 'off_duty',
+        'statusMessage': 'Employee shift ended',
+      });
+
+      // 3. Update employee status collection (like React Native)
+      await _firestore.collection('employeeStatus').doc(user.uid).set({
+        'isOnDuty': false,
+        'status': 'Off Duty',
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // 4. Update attendance record with end time (like React Native)
+      // ignore: unnecessary_cast
+      final attendanceData = activeAttendance.data() as Map<String, dynamic>;
+      final startTime = (attendanceData['startTime'] as Timestamp).toDate();
+      final endTime = DateTime.now();
+      final duration = endTime.difference(startTime);
+      final totalHours = duration.inMinutes / 60.0;
+
+      await activeAttendance.reference.update({
+        'endTime': FieldValue.serverTimestamp(),
+        'checkOutTime': FieldValue.serverTimestamp(),
+        'totalHours': totalHours,
+        'duration': '${duration.inHours}h ${duration.inMinutes % 60}m',
+      });
+
+      // Update local state
       hasCheckedInToday.value = false;
       checkInTime.value = null;
       final formatter = DateFormat('hh:mm a');
-      lastActivity.value =
-          'Checked out at ${formatter.format(now)} (${totalHours.toStringAsFixed(1)} hours)';
-      onDuty.value = false; // Update on-duty status
+      lastActivity.value = 'Checked out at ${formatter.format(today)}';
+      onDuty.value = false;
 
-      // Stop working time tracking
+      // Stop working time tracking and statistics refresh
       _stopWorkingTimeTimer();
+      _stopStatisticsAutoRefresh();
 
       Get.snackbar(
         'Success',
-        'Checked out successfully - Location tracking stopped\nTotal hours: ${totalHours.toStringAsFixed(1)}',
-        backgroundColor: Colors.blue,
+        'Checked out successfully!',
+        backgroundColor: Colors.green,
         colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 4),
+        duration: const Duration(seconds: 3),
       );
 
       // Refresh stats
@@ -593,7 +613,6 @@ class AttendanceController extends GetxController {
         'Failed to check out: $e',
         backgroundColor: Colors.red,
         colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
       );
     } finally {
       isLoading.value = false;
@@ -852,32 +871,7 @@ class AttendanceController extends GetxController {
     return dutyStatus;
   }
 
-  // Create admin notification for employee status changes
-  Future<void> _createAdminNotification(
-    String companyId,
-    String title,
-    String message,
-    String type,
-    String employeeId,
-  ) async {
-    try {
-      await _firestore.collection('admin_notifications').add({
-        'companyId': companyId,
-        'title': title,
-        'message': message,
-        'type': type, // check_in, check_out, leave_request, etc.
-        'employeeId': employeeId,
-        'isRead': false,
-        'priority': type == 'check_in' ? 'low' : 'medium',
-        'createdAt': Timestamp.fromDate(DateTime.now()),
-        'updatedAt': Timestamp.fromDate(DateTime.now()),
-      });
-    } catch (e) {
-      print('Error creating admin notification: $e');
-    }
-  }
-
-  // Check if user is on approved leave today
+  // Get real-time employee status for admin dashboard
   Future<bool> isUserOnLeaveToday(String userId) async {
     try {
       final today = DateTime.now();
@@ -930,65 +924,5 @@ class AttendanceController extends GetxController {
             };
           }).toList();
         });
-  }
-
-  // Send location information to admin when employee checks in
-  Future<void> _sendLocationToAdmin(
-    String userId,
-    String userName,
-    String companyId,
-    LocationController locationController,
-    DateTime checkInTime,
-  ) async {
-    try {
-      // Create a notification for admin about employee check-in with location
-      final adminNotification = {
-        'type': 'employee_checkin',
-        'title': 'Employee Check-In Alert',
-        'message': '$userName has checked in',
-        'employeeId': userId,
-        'employeeName': userName,
-        'companyId': companyId,
-        'checkInTime': Timestamp.fromDate(checkInTime),
-        'location': locationController.currentAddress.value.isNotEmpty
-            ? locationController.currentAddress.value
-            : 'Location not available',
-        'latitude': locationController.currentLocation.value?.latitude,
-        'longitude': locationController.currentLocation.value?.longitude,
-        'accuracy': locationController.currentLocation.value?.accuracy,
-        'timestamp': Timestamp.fromDate(checkInTime),
-        'isRead': false,
-        'priority': 'high',
-        'createdAt': Timestamp.fromDate(checkInTime),
-      };
-
-      // Add to admin notifications collection
-      await _firestore.collection('admin_notifications').add(adminNotification);
-
-      // Also update employee location in real-time tracking collection
-      await _firestore.collection('employee_location_tracking').doc(userId).set(
-        {
-          'userId': userId,
-          'userName': userName,
-          'companyId': companyId,
-          'currentLocation': locationController.currentAddress.value.isNotEmpty
-              ? locationController.currentAddress.value
-              : 'Location not available',
-          'latitude': locationController.currentLocation.value?.latitude,
-          'longitude': locationController.currentLocation.value?.longitude,
-          'accuracy': locationController.currentLocation.value?.accuracy,
-          'isOnDuty': true,
-          'lastCheckIn': Timestamp.fromDate(checkInTime),
-          'lastUpdated': Timestamp.fromDate(checkInTime),
-          'status': 'checked_in',
-        },
-        SetOptions(merge: true),
-      );
-
-      print('Location sent to admin successfully for user: $userName');
-    } catch (e) {
-      print('Error sending location to admin: $e');
-      // Don't throw error to avoid disrupting check-in process
-    }
   }
 }

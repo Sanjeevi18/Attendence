@@ -127,32 +127,144 @@ class _AppInitializerState extends State<AppInitializer> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(gradient: AppTheme.primaryGradient),
-        child: const Center(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF000000), // Pure black
+              Color(0xFF1a1a1a), // Dark gray
+              Color(0xFF2d2d2d), // Medium gray
+            ],
+          ),
+        ),
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo
-              Icon(Icons.business_center, size: 80, color: Colors.white),
-              SizedBox(height: 20),
-              Text(
-                'Lights Attendance',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+              // Modern Loading Animation Container
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.2),
+                    width: 2,
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    // Rotating border
+                    Positioned.fill(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.white.withOpacity(0.8),
+                        ),
+                      ),
+                    ),
+                    // Center icon
+                    Center(
+                      child: Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.white.withOpacity(0.3),
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.access_time,
+                          color: Colors.black,
+                          size: 30,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Text(
-                'Management System',
-                style: TextStyle(fontSize: 16, color: Colors.white70),
+              const SizedBox(height: 50),
+              // App Title with modern typography
+              const Text(
+                'Lights Attendance',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w300,
+                  color: Colors.white,
+                  letterSpacing: 2.0,
+                  height: 1.2,
+                ),
               ),
-              SizedBox(height: 40),
-              CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
-              SizedBox(height: 20),
-              Text(
-                'Initializing...',
-                style: TextStyle(color: Colors.white70, fontSize: 16),
+              const SizedBox(height: 8),
+              const Text(
+                'Management System',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w200,
+                  color: Colors.white70,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const SizedBox(height: 60),
+              // Modern loading indicator
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.1),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.white.withOpacity(0.7),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Text(
+                      'Initializing...',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 40),
+              // Minimalist dots indicator
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildDot(true),
+                  const SizedBox(width: 8),
+                  _buildDot(false),
+                  const SizedBox(width: 8),
+                  _buildDot(false),
+                ],
               ),
             ],
           ),
@@ -160,4 +272,15 @@ class _AppInitializerState extends State<AppInitializer> {
       ),
     );
   }
+
+  Widget _buildDot(bool active) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      width: active ? 12 : 6,
+      height: 6,
+      decoration: BoxDecoration(
+        color: active ? Colors.white : Colors.white.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(3),
+      ),
+    );
 }

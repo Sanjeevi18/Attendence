@@ -46,7 +46,10 @@ class LocationAttendanceWidget extends StatelessWidget {
                     SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
                     ),
                     SizedBox(width: 8),
                     Text('Getting location...'),

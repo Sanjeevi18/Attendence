@@ -354,16 +354,32 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
                           strokeWidth: 2,
                         ),
                       )
-                    : IconButton(
-                        onPressed: () {
-                          locationController.refreshLocation();
-                        },
-                        icon: const Icon(
-                          Icons.refresh,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        tooltip: 'Refresh Location',
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: () {
+                              locationController.forceHighAccuracyUpdate();
+                            },
+                            icon: const Icon(
+                              Icons.gps_fixed,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            tooltip: 'High Accuracy GPS',
+                          ),
+                          IconButton(
+                            onPressed: () {
+                              locationController.refreshLocation();
+                            },
+                            icon: const Icon(
+                              Icons.refresh,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            tooltip: 'Refresh Location',
+                          ),
+                        ],
                       ),
               ),
             ],
@@ -372,71 +388,78 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
         const SizedBox(height: 12),
 
         // Enhanced map preview with Google Maps
-        Obx(
-          () => Container(
-            height: 200,
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                children: [
-                  // Real Google Maps with live location tracking
-                  Obx(() {
-                    final userLocation =
-                        locationController.currentLocation.value;
-                    final defaultLocation = const LatLng(
-                      28.6139,
-                      77.2090,
-                    ); // Delhi default
+        Container(
+          height: 200,
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[300]!),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                // Real Google Maps with live location tracking
+                Obx(() {
+                  final userLocation = locationController.currentLocation.value;
+                  final defaultLocation = const LatLng(
+                    28.6139,
+                    77.2090,
+                  ); // Delhi default
 
-                    return GoogleMap(
-                      onMapCreated: (GoogleMapController controller) {
-                        _mapController = controller;
-                        // Auto-zoom to user location when map is ready
-                        if (userLocation != null) {
-                          _animateToUserLocation(userLocation);
-                        }
-                      },
-                      initialCameraPosition: CameraPosition(
-                        target: userLocation != null
-                            ? LatLng(
-                                userLocation.latitude,
-                                userLocation.longitude,
-                              )
-                            : defaultLocation,
-                        zoom: 16.0,
-                      ),
-                      markers: _buildRealTimeMarkers(),
-                      myLocationEnabled: true,
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: false,
-                      mapToolbarEnabled: false,
-                      compassEnabled: true,
-                      mapType: MapType.normal,
-                      onCameraMove: (CameraPosition position) {
-                        // Optional: Handle camera movement
-                      },
-                    );
-                  }),
-
-                  // Loading overlay
-                  if (locationController.isLoading.value)
-                    Container(
-                      color: Colors.black.withOpacity(0.3),
-                      child: const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
-                      ),
+                  return GoogleMap(
+                    onMapCreated: (GoogleMapController controller) {
+                      _mapController = controller;
+                      // Auto-zoom to user location when map is ready
+                      if (userLocation != null) {
+                        _animateToUserLocation(userLocation);
+                      }
+                    },
+                    initialCameraPosition: CameraPosition(
+                      target: userLocation != null
+                          ? LatLng(
+                              userLocation.latitude,
+                              userLocation.longitude,
+                            )
+                          : defaultLocation,
+                      zoom: 16.0,
                     ),
+                    markers: _buildRealTimeMarkers(),
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: false,
+                    zoomControlsEnabled: false,
+                    mapToolbarEnabled: false,
+                    compassEnabled: true,
+                    mapType: MapType.normal,
+                    onCameraMove: (CameraPosition position) {
+                      // Optional: Handle camera movement
+                    },
+                  );
+                }),
 
-                  // Location status overlay
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
+                // Loading overlay
+                Obx(
+                  () => locationController.isLoading.value
+                      ? Container(
+                          color: Colors.black.withOpacity(0.2),
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                              strokeWidth: 3,
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+
+                // Location status overlay
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Obx(
+                    () => Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
                         vertical: 4,
@@ -472,8 +495,8 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -683,6 +706,34 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
                   Colors.orange,
                   () => _tabController.animateTo(2),
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildQuickActionButton(
+                  'High GPS',
+                  Icons.gps_fixed,
+                  Colors.green,
+                  () {
+                    final locationController = Get.find<LocationController>();
+                    locationController.forceHighAccuracyUpdate();
+                    Get.snackbar(
+                      'GPS Update',
+                      'Fetching high-accuracy location...',
+                      icon: const Icon(Icons.gps_fixed, color: Colors.white),
+                      backgroundColor: Colors.green,
+                      colorText: Colors.white,
+                      duration: const Duration(seconds: 2),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(), // Empty placeholder for balance
               ),
             ],
           ),
@@ -1335,12 +1386,18 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
               ],
             ),
             const SizedBox(height: 12),
+            // Status filter options
+            _buildStatusFilter(),
+            const SizedBox(height: 12),
             Obx(() {
               if (leaveController.isLoading.value) {
                 return const Center(
                   child: Padding(
                     padding: EdgeInsets.all(20),
-                    child: CircularProgressIndicator(),
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                      strokeWidth: 3,
+                    ),
                   ),
                 );
               }
@@ -1402,7 +1459,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: leaveController.userLeaveRequests.length,
-                separatorBuilder: (context, index) => const Divider(),
+                separatorBuilder: (context, index) => const Divider(height: 1),
                 itemBuilder: (context, index) {
                   final request = leaveController.userLeaveRequests[index];
                   return _buildLeaveRequestItem(request);
@@ -1415,6 +1472,47 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
     );
   }
 
+  Widget _buildStatusFilter() {
+    return Obx(() {
+      final counts = leaveController.getLeaveRequestCounts();
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildFilterChip('all', 'All', counts['all'] ?? 0),
+            const SizedBox(width: 8),
+            _buildFilterChip('pending', 'Pending', counts['pending'] ?? 0),
+            const SizedBox(width: 8),
+            _buildFilterChip('approved', 'Approved', counts['approved'] ?? 0),
+            const SizedBox(width: 8),
+            _buildFilterChip('rejected', 'Rejected', counts['rejected'] ?? 0),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _buildFilterChip(String value, String label, int count) {
+    return Obx(() {
+      final isSelected = leaveController.selectedStatusFilter.value == value;
+      return FilterChip(
+        selected: isSelected,
+        label: Text('$label ($count)'),
+        onSelected: (selected) {
+          if (selected) {
+            leaveController.updateStatusFilter(value);
+          }
+        },
+        selectedColor: AppTheme.primaryColor.withOpacity(0.2),
+        checkmarkColor: AppTheme.primaryColor,
+        labelStyle: TextStyle(
+          color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      );
+    });
+  }
+
   Widget _buildLeaveRequestItem(LeaveRequest request) {
     final statusColor = leaveController.getStatusColor(request.status);
     final leaveType = LeaveType.values.firstWhere(
@@ -1422,136 +1520,128 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
       orElse: () => LeaveType.casual,
     );
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      child: Column(
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+      leading: CircleAvatar(
+        backgroundColor: leaveType.color.withOpacity(0.1),
+        child: Icon(leaveType.icon, color: leaveType.color, size: 20),
+      ),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              leaveType.displayName,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: statusColor.withOpacity(0.3)),
+            ),
+            child: Text(
+              request.status.toUpperCase(),
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+      subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const SizedBox(height: 4),
           Row(
             children: [
-              Icon(leaveType.icon, color: leaveType.color, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  leaveType.displayName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: statusColor.withOpacity(0.3)),
-                ),
-                child: Text(
-                  request.status.toUpperCase(),
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+              Icon(Icons.calendar_today, size: 12, color: Colors.grey[600]),
               const SizedBox(width: 4),
               Text(
                 '${DateFormat('MMM dd').format(request.fromDate)} - ${DateFormat('MMM dd, yyyy').format(request.toDate)}',
-                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                style: TextStyle(color: Colors.grey[600], fontSize: 11),
               ),
-              const SizedBox(width: 12),
-              Icon(Icons.schedule, size: 14, color: Colors.grey[600]),
+              const SizedBox(width: 8),
+              Icon(Icons.schedule, size: 12, color: Colors.grey[600]),
               const SizedBox(width: 4),
               Text(
                 '${request.totalDays} ${request.totalDays == 1 ? 'day' : 'days'}',
-                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                style: TextStyle(color: Colors.grey[600], fontSize: 11),
               ),
             ],
           ),
           if (request.reason.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text(
               request.reason,
-              style: TextStyle(color: Colors.grey[700], fontSize: 12),
-              maxLines: 2,
+              style: TextStyle(color: Colors.grey[700], fontSize: 11),
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ],
           if (request.adminComments != null &&
               request.adminComments!.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
                 color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(4),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Admin Comments:',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11,
-                      color: Colors.blue,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    request.adminComments!,
-                    style: const TextStyle(fontSize: 11, color: Colors.blue),
-                  ),
-                ],
+              child: Text(
+                'Admin: ${request.adminComments!}',
+                style: const TextStyle(fontSize: 10, color: Colors.blue),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
-          if (request.status == 'pending') ...[
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () async {
-                    final confirmed = await Get.dialog<bool>(
-                      AlertDialog(
-                        title: const Text('Cancel Request'),
-                        content: const Text(
-                          'Are you sure you want to cancel this leave request?',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Get.back(result: false),
-                            child: const Text('No'),
-                          ),
-                          TextButton(
-                            onPressed: () => Get.back(result: true),
-                            child: const Text('Yes'),
-                          ),
-                        ],
-                      ),
-                    );
-
-                    if (confirmed == true) {
-                      await leaveController.cancelLeaveRequest(request.id);
-                    }
-                  },
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(color: Colors.red),
+        ],
+      ),
+      trailing: request.status == 'pending'
+          ? PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, size: 18),
+              onSelected: (value) {
+                if (value == 'delete') {
+                  _showDeleteConfirmation(request);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, size: 16, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Delete', style: TextStyle(fontSize: 12)),
+                    ],
                   ),
                 ),
               ],
-            ),
-          ],
+            )
+          : null,
+    );
+  }
+
+  void _showDeleteConfirmation(LeaveRequest request) {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Delete Leave Request'),
+        content: const Text(
+          'Are you sure you want to delete this leave request?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              Get.back();
+              await leaveController.deleteLeaveRequest(request.id);
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
@@ -1638,13 +1728,24 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
       // Refresh today's status to update the UI
       await attendanceController.checkTodayStatus();
 
-      Get.snackbar(
-        'Check-in Successful',
-        'Your location has been shared with admin. Have a great day!',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 4),
+      // --- MODIFICATION: Replaced snackbar with a persistent alert dialog ---
+      await Get.dialog(
+        AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Check-in Successful'),
+          content: const Text(
+            'You are now ON DUTY. Your location has been shared with the admin.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(), // Closes the dialog
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+        barrierDismissible: false, // User must press OK to dismiss
       );
     } catch (e) {
       Get.snackbar(

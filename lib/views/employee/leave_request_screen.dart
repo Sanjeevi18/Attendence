@@ -27,7 +27,15 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
       ),
       body: Obx(() {
         if (controller.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
+          return Container(
+            color: Colors.black.withOpacity(0.1),
+            child: const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                strokeWidth: 3,
+              ),
+            ),
+          );
         }
 
         return SingleChildScrollView(
@@ -88,7 +96,7 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                   }
                   return null;
                 },
-                items: LeaveType.values.map((type) {
+                items: controller.leaveTypesForReasons.map((type) {
                   return DropdownMenuItem(
                     value: type,
                     child: Row(
@@ -238,6 +246,48 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            Obx(() {
+              final selectedType = controller.selectedLeaveType.value;
+              if (selectedType != null &&
+                  selectedType != LeaveType.workFromHome) {
+                final reasons = controller.getLeaveReasons(selectedType);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      decoration: InputDecoration(
+                        labelText: 'Select reason',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                      ),
+                      items: reasons.map((reason) {
+                        return DropdownMenuItem(
+                          value: reason,
+                          child: Text(reason),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          controller.reasonController.text = value;
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Or provide custom reason:',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                );
+              }
+              return const SizedBox.shrink();
+            }),
             TextFormField(
               controller: controller.reasonController,
               maxLines: 4,

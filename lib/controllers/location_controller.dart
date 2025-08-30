@@ -26,7 +26,10 @@ class LocationController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _initializeLocation();
+    // Start with cached location immediately for fast loading
+    _loadCachedLocationFirst();
+    // Then get fresh location in background
+    _initializeLocationInBackground();
   }
 
   @override
@@ -35,31 +38,66 @@ class LocationController extends GetxController {
     super.onClose();
   }
 
-  Future<void> _initializeLocation() async {
+  /// Load cached location first for immediate display
+  Future<void> _loadCachedLocationFirst() async {
     try {
-      // Only initialize if not already loaded
-      if (_hasLoadedLocation &&
-          _lastLocationUpdate != null &&
-          DateTime.now().difference(_lastLocationUpdate!).inMinutes < 5) {
-        print('Location already loaded recently, skipping initialization');
-        return;
-      }
+      // Try to get last known position immediately
+      Position? lastPosition = await Geolocator.getLastKnownPosition(
+        forceAndroidLocationManager: false,
+      );
 
-      // Always check permissions first
-      await checkLocationPermission();
-      if (hasPermission.value) {
-        await getCurrentLocation();
-        _hasLoadedLocation = true;
-        _lastLocationUpdate = DateTime.now();
-      } else {
-        currentAddress.value = 'Location permission required';
-        errorMessage.value = 'Location permission required';
+      if (lastPosition != null) {
+        currentLocation.value = lastPosition;
+        _lastLocationUpdate = DateTime.now().subtract(
+          const Duration(minutes: 5),
+        ); // Mark as old
+        locationAccuracy.value = 'GPS (Cached)';
+        currentAddress.value = 'Loading address...';
+
+        // Get address for cached location in background
+        _getAddressAsync(lastPosition.latitude, lastPosition.longitude);
+
+        print(
+          'Loaded cached location: ${lastPosition.latitude}, ${lastPosition.longitude}',
+        );
       }
     } catch (e) {
-      print('Error initializing location: $e');
-      errorMessage.value = 'Error initializing location: $e';
-      currentAddress.value = 'Location initialization failed';
+      print('No cached location available: $e');
     }
+  }
+
+  /// Initialize location in background without blocking UI
+  Future<void> _initializeLocationInBackground() async {
+    Future.delayed(const Duration(milliseconds: 500), () async {
+      try {
+        // Only initialize if not already loaded recently
+        if (_hasLoadedLocation &&
+            _lastLocationUpdate != null &&
+            DateTime.now().difference(_lastLocationUpdate!).inMinutes < 2) {
+          print(
+            'Location already loaded recently, skipping background initialization',
+          );
+          return;
+        }
+
+        // Check permissions in background
+        await checkLocationPermission();
+        if (hasPermission.value) {
+          await getCurrentLocation();
+          _hasLoadedLocation = true;
+          _lastLocationUpdate = DateTime.now();
+        } else {
+          currentAddress.value = 'Location permission required';
+          errorMessage.value = 'Location permission required';
+        }
+      } catch (e) {
+        print('Error in background location initialization: $e');
+        errorMessage.value = 'Error initializing location: $e';
+        if (currentAddress.value == 'Loading address...') {
+          currentAddress.value = 'Location initialization failed';
+        }
+      }
+    });
   }
 
   Future<void> startLocationTracking() async {
@@ -79,13 +117,13 @@ class LocationController extends GetxController {
         }
       }
 
-      // High accuracy settings similar to React Native version
+      // High accuracy settings for maximum precision
       const locationSettings = LocationSettings(
-        accuracy: LocationAccuracy.best, // Changed to best for highest accuracy
-        distanceFilter: 5, // Update every 5 meters for higher precision
+        accuracy: LocationAccuracy.best, // Highest possible accuracy
+        distanceFilter: 1, // Update every 1 meter for maximum precision
         timeLimit: Duration(
-          seconds: 15,
-        ), // Increased timeout for better accuracy
+          seconds: 30,
+        ), // Increased timeout for better GPS lock
       );
 
       _positionSubscription =
@@ -295,26 +333,35 @@ class LocationController extends GetxController {
       errorMessage.value = '';
       currentAddress.value = 'Getting location...';
 
-      // Try highest accuracy first with longer timeout for best results
+      // Use highest accuracy settings with longer timeout for best GPS lock
       Position position;
       try {
+        // First attempt: Best accuracy with longer timeout
         position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.best, // Highest accuracy
-          timeLimit: const Duration(seconds: 15),
+          desiredAccuracy: LocationAccuracy.best,
+          timeLimit: const Duration(seconds: 30), // Longer timeout for GPS lock
+          forceAndroidLocationManager: false, // Use fused location provider
         );
+        print('Got location with BEST accuracy: ${position.accuracy}m');
       } catch (e) {
         print('Best accuracy failed, trying high accuracy: $e');
         try {
+          // Second attempt: High accuracy
           position = await Geolocator.getCurrentPosition(
             desiredAccuracy: LocationAccuracy.high,
-            timeLimit: const Duration(seconds: 10),
+            timeLimit: const Duration(seconds: 20),
+            forceAndroidLocationManager: false,
           );
+          print('Got location with HIGH accuracy: ${position.accuracy}m');
         } catch (e2) {
           print('High accuracy failed, trying medium accuracy: $e2');
+          // Final attempt: Medium accuracy
           position = await Geolocator.getCurrentPosition(
             desiredAccuracy: LocationAccuracy.medium,
-            timeLimit: const Duration(seconds: 8),
+            timeLimit: const Duration(seconds: 15),
+            forceAndroidLocationManager: false,
           );
+          print('Got location with MEDIUM accuracy: ${position.accuracy}m');
         }
       }
 
@@ -324,9 +371,14 @@ class LocationController extends GetxController {
       // Always display GPS
       locationAccuracy.value = 'GPS';
 
-      // Set coordinates immediately for quick feedback
+      // Set coordinates immediately with accuracy info for quick feedback
       currentAddress.value =
-          '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+          '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)} (±${position.accuracy.toStringAsFixed(1)}m)';
+
+      print('Location accuracy: ${position.accuracy}m');
+      print(
+        'Location coordinates: ${position.latitude}, ${position.longitude}',
+      );
 
       // Get address in background to avoid blocking
       _getAddressAsync(position.latitude, position.longitude);
@@ -438,24 +490,72 @@ class LocationController extends GetxController {
   }
 
   void refreshLocation() {
-    // Only refresh if it's been more than 30 seconds since last update
-    if (_lastLocationUpdate != null &&
-        DateTime.now().difference(_lastLocationUpdate!).inSeconds < 30) {
-      print('Location refreshed recently, skipping');
-      Get.snackbar(
-        'Info',
-        'Location was updated recently',
-        backgroundColor: Colors.blue,
-        colorText: Colors.white,
-        duration: const Duration(seconds: 2),
-      );
-      return;
-    }
+    // Clear cached location to force fresh GPS reading
+    _lastLocationUpdate = null;
 
     if (hasPermission.value) {
       getCurrentLocation();
     } else {
       checkLocationPermission();
+    }
+  }
+
+  /// Force high-accuracy location update regardless of cache
+  Future<void> forceHighAccuracyUpdate() async {
+    if (!hasPermission.value) {
+      await checkLocationPermission();
+      if (!hasPermission.value) return;
+    }
+
+    try {
+      isLoading.value = true;
+      errorMessage.value = '';
+      currentAddress.value = 'Getting high-accuracy location...';
+
+      // Force best accuracy with maximum timeout
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(
+          seconds: 45,
+        ), // Extended timeout for best accuracy
+        forceAndroidLocationManager: false,
+      );
+
+      currentLocation.value = position;
+      _lastLocationUpdate = DateTime.now();
+      locationAccuracy.value = 'GPS';
+
+      // Display with accuracy information
+      currentAddress.value =
+          '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)} (±${position.accuracy.toStringAsFixed(1)}m)';
+
+      print(
+        'Forced high-accuracy location: ${position.latitude}, ${position.longitude}',
+      );
+      print('Accuracy: ${position.accuracy}m');
+
+      // Get address in background
+      _getAddressAsync(position.latitude, position.longitude);
+
+      Get.snackbar(
+        'Location Updated',
+        'High-accuracy location obtained (±${position.accuracy.toStringAsFixed(1)}m)',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
+      );
+    } catch (e) {
+      print('Error getting high-accuracy location: $e');
+      errorMessage.value = 'Error getting high-accuracy location: $e';
+      Get.snackbar(
+        'Location Error',
+        'Failed to get high-accuracy location. Please ensure GPS is enabled.',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 4),
+      );
+    } finally {
+      isLoading.value = false;
     }
   }
 
