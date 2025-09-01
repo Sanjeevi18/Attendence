@@ -366,7 +366,7 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
       Get.snackbar(
         'Error',
         'Please select from date first',
-        backgroundColor: Colors.red,
+        backgroundColor: Colors.black54,
         colorText: Colors.white,
         snackPosition: SnackPosition.BOTTOM,
       );
@@ -404,7 +404,7 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
       Get.snackbar(
         'Error',
         'Please select a leave type',
-        backgroundColor: Colors.red,
+        backgroundColor: Colors.black54,
         colorText: Colors.white,
         snackPosition: SnackPosition.BOTTOM,
       );
@@ -415,7 +415,7 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
       Get.snackbar(
         'Error',
         'Please select both from and to dates',
-        backgroundColor: Colors.red,
+        backgroundColor: Colors.black54,
         colorText: Colors.white,
         snackPosition: SnackPosition.BOTTOM,
       );

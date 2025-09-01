@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // New color palette from https://colorhunt.co/palette/000000cfffe2a2d5c6f6f6f6
-  static const Color primaryColor = Color(0xFF000000); // Black
-  static const Color primaryColorLight = Color(0xFFA2D5C6); // Light teal
-  static const Color primaryColorDark = Color(0xFF000000); // Black
-  static const Color accentColor = Color(0xFFCFFFE2); // Light mint
-  static const Color backgroundColor = Color(0xFFF6F6F6); // Light gray
-  static const Color surfaceColor = Colors.white;
-  static const Color secondaryColor = Color(0xFFA2D5C6); // Teal
-  static const Color errorColor = Color(0xFFE53935);
-  static const Color successColor = Color(0xFF43A047);
-  static const Color warningColor = Color(0xFFFF9800);
-  static const Color infoColor = Color(0xFFA2D5C6);
+  // Black and White color palette
+  static const Color primaryColor = Color(0xFF000000); // Pure Black
+  static const Color primaryColorLight = Color(0xFF424242); // Dark Gray
+  static const Color primaryColorDark = Color(0xFF000000); // Pure Black
+  static const Color accentColor = Color(0xFFFFFFFF); // Pure White
+  static const Color backgroundColor = Color(0xFFFFFFFF); // Pure White
+  static const Color surfaceColor = Color(0xFFFFFFFF); // Pure White
+  static const Color secondaryColor = Color(0xFF616161); // Medium Gray
+  static const Color errorColor = Color(0xFF000000); // Black for errors
+  static const Color successColor = Color(0xFF000000); // Black for success
+  static const Color warningColor = Color(0xFF424242); // Dark Gray for warnings
+  static const Color infoColor = Color(0xFF757575); // Light Gray for info
 
   static ThemeData lightTheme = ThemeData(
     useMaterial3: true,
@@ -89,10 +89,10 @@ class AppTheme {
         borderSide: const BorderSide(color: errorColor, width: 2),
       ),
       filled: true,
-      fillColor: Colors.grey[50],
+      fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      labelStyle: const TextStyle(color: Colors.grey),
-      hintStyle: const TextStyle(color: Colors.grey),
+      labelStyle: const TextStyle(color: Colors.black54),
+      hintStyle: const TextStyle(color: Colors.black38),
     ),
     cardTheme: CardThemeData(
       color: surfaceColor,
@@ -110,7 +110,7 @@ class AppTheme {
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       backgroundColor: surfaceColor,
       selectedItemColor: primaryColor,
-      unselectedItemColor: Colors.grey,
+      unselectedItemColor: Colors.black38,
       type: BottomNavigationBarType.fixed,
       elevation: 8,
     ),
@@ -129,20 +129,20 @@ class AppTheme {
       ),
     ),
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: Colors.grey[800],
+      backgroundColor: Colors.black,
       contentTextStyle: const TextStyle(color: Colors.white),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       behavior: SnackBarBehavior.floating,
     ),
     chipTheme: ChipThemeData(
-      backgroundColor: Colors.grey[200],
-      selectedColor: primaryColorLight,
+      backgroundColor: Colors.white,
+      selectedColor: Colors.black,
       labelStyle: const TextStyle(color: Colors.black87),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
     tabBarTheme: const TabBarThemeData(
       labelColor: primaryColor,
-      unselectedLabelColor: Colors.grey,
+      unselectedLabelColor: Colors.black38,
       indicatorColor: primaryColor,
       indicatorSize: TabBarIndicatorSize.tab,
     ),

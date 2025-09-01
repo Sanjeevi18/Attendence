@@ -247,6 +247,31 @@ class LeaveRequestController extends GetxController {
     }
   }
 
+  Future<void> loadAllLeaveRequests() async {
+    try {
+      isLoading.value = true;
+      final user = _authController.currentUser.value;
+      if (user == null || !user.isAdmin) return;
+
+      final querySnapshot = await _firestore
+          .collection('leave_requests')
+          .where('companyId', isEqualTo: user.companyId)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      final requests = querySnapshot.docs
+          .map((doc) => LeaveRequest.fromMap(doc.data(), doc.id))
+          .toList();
+
+      pendingLeaveRequests.value = requests; // Using same list for simplicity
+    } catch (e) {
+      error.value = 'Failed to load leave requests: $e';
+      print('Error loading all leave requests: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   Future<bool> submitLeaveRequest({
     required String leaveType,
     required DateTime fromDate,

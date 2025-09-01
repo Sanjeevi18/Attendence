@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/user_model.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/shared_calendar_widget.dart';
+import '../../widgets/comprehensive_attendance_calendar_widget.dart';
+import '../../controllers/attendance_controller.dart';
+import '../../controllers/auth_controller.dart';
 
 class EmployeeDetailScreen extends StatefulWidget {
   final User employee;
@@ -17,11 +20,332 @@ class EmployeeDetailScreen extends StatefulWidget {
 class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final AttendanceController attendanceController =
+      Get.find<AttendanceController>();
+  final AuthController authController = Get.find<AuthController>();
+
+  // Employee stats
+  int presentDays = 0;
+  int absentDays = 0;
+  int leaveDays = 0;
+  int workingHours = 0;
+  bool isLoadingStats = true;
+
+  // Location data
+  Map<String, dynamic>? currentLocationData;
+  List<Map<String, dynamic>> locationHistory = [];
+  bool isLoadingLocation = true;
+
+  // Recent attendance
+  List<Map<String, dynamic>> recentAttendance = [];
+  bool isLoadingAttendance = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadEmployeeData();
+  }
+
+  Future<void> _loadEmployeeData() async {
+    await Future.wait([
+      _loadEmployeeStats(),
+      _loadLocationData(),
+      _loadRecentAttendance(),
+    ]);
+  }
+
+  Future<void> _loadEmployeeStats() async {
+    try {
+      setState(() {
+        isLoadingStats = true;
+      });
+
+      // Get current month's data directly from Firebase
+      final now = DateTime.now();
+      final monthStart = DateTime(now.year, now.month, 1);
+      final monthEnd = DateTime(now.year, now.month + 1, 1);
+      final startDateStr = DateFormat('yyyy-MM-dd').format(monthStart);
+      final endDateStr = DateFormat('yyyy-MM-dd').format(monthEnd);
+
+      // Get attendance records for current month
+      final attendanceQuery = await FirebaseFirestore.instance
+          .collection('attendance')
+          .where('userId', isEqualTo: widget.employee.id)
+          .where('date', isGreaterThanOrEqualTo: startDateStr)
+          .where('date', isLessThan: endDateStr)
+          .get();
+
+      int presentCount = 0;
+      int totalMinutes = 0;
+
+      for (var doc in attendanceQuery.docs) {
+        final data = doc.data();
+        if (data['status'] == 'present') {
+          presentCount++;
+          if (data['totalDuration'] != null) {
+            totalMinutes += (data['totalDuration'] as num).toInt();
+          }
+        }
+      }
+
+      final totalHours = (totalMinutes / 60).round();
+      presentDays = presentCount;
+      workingHours = totalHours;
+
+      // Get leave requests for current month
+      final leaveQuery = await FirebaseFirestore.instance
+          .collection('leave_requests')
+          .where('userId', isEqualTo: widget.employee.id)
+          .where('status', isEqualTo: 'approved')
+          .get();
+
+      int totalLeaveDays = 0;
+      for (var doc in leaveQuery.docs) {
+        final data = doc.data();
+        final fromDate = (data['fromDate'] as Timestamp).toDate();
+        final toDate = (data['toDate'] as Timestamp).toDate();
+
+        // Calculate days in current month
+        DateTime checkDate = fromDate;
+        while (checkDate.isBefore(toDate.add(const Duration(days: 1)))) {
+          if (checkDate.month == now.month && checkDate.year == now.year) {
+            totalLeaveDays++;
+          }
+          checkDate = checkDate.add(const Duration(days: 1));
+        }
+      }
+
+      leaveDays = totalLeaveDays;
+
+      // Calculate absent days properly: working days - present days - approved leave days
+      // But only count up to current date for accurate calculation
+      final today = DateTime.now();
+      final endDateForCalculation =
+          today.month == now.month && today.year == now.year
+          ? today
+          : DateTime(
+              now.year,
+              now.month + 1,
+              0,
+            ); // End of month if not current month
+
+      final workingDaysUpToNow = _calculateWorkingDaysUpToDate(
+        monthStart,
+        endDateForCalculation,
+      );
+
+      // Absent days = working days that passed - (present days + approved leave days)
+      absentDays = (workingDaysUpToNow - presentDays - leaveDays).clamp(
+        0,
+        workingDaysUpToNow,
+      );
+
+      setState(() {
+        isLoadingStats = false;
+      });
+    } catch (e) {
+      print('Error loading employee stats: $e');
+      setState(() {
+        isLoadingStats = false;
+      });
+    }
+  }
+
+  int _calculateWorkingDaysUpToDate(DateTime start, DateTime end) {
+    int workingDays = 0;
+    DateTime current = start;
+
+    while (current.isBefore(end.add(const Duration(days: 1))) &&
+        current.isBefore(DateTime.now().add(const Duration(days: 1)))) {
+      // Exclude Sundays (weekday 7) - only count Monday to Saturday as working days
+      if (current.weekday != DateTime.sunday) {
+        workingDays++;
+      }
+      current = current.add(const Duration(days: 1));
+    }
+
+    return workingDays;
+  }
+
+  Color _getEmployeeStatusColor() {
+    if (currentLocationData != null &&
+        currentLocationData!['isOnDuty'] == true) {
+      return Colors.green; // On duty
+    } else if (widget.employee.isActive) {
+      return Colors.orange; // Active but off duty
+    } else {
+      return Colors.red; // Inactive
+    }
+  }
+
+  String _getEmployeeStatusText() {
+    if (currentLocationData != null &&
+        currentLocationData!['isOnDuty'] == true) {
+      return 'On Duty';
+    } else if (widget.employee.isActive) {
+      return 'Off Duty';
+    } else {
+      return 'Inactive';
+    }
+  }
+
+  Future<void> _loadLocationData() async {
+    try {
+      setState(() {
+        isLoadingLocation = true;
+      });
+
+      final locationData = await attendanceController.getEmployeeLocationData(
+        widget.employee.id,
+      );
+      currentLocationData = locationData;
+
+      // Load recent location history from attendance records
+      final now = DateTime.now();
+      final oneWeekAgo = now.subtract(const Duration(days: 7));
+      final startDateStr = DateFormat('yyyy-MM-dd').format(oneWeekAgo);
+      final endDateStr = DateFormat('yyyy-MM-dd').format(now);
+
+      final attendanceQuery = await FirebaseFirestore.instance
+          .collection('attendance')
+          .where('userId', isEqualTo: widget.employee.id)
+          .where('date', isGreaterThanOrEqualTo: startDateStr)
+          .where('date', isLessThanOrEqualTo: endDateStr)
+          .orderBy('date', descending: true)
+          .get();
+
+      // Convert attendance data to location history
+      locationHistory.clear();
+      for (var doc in attendanceQuery.docs) {
+        final data = doc.data();
+
+        if (data['dutyStartTime'] != null) {
+          final startTime = (data['dutyStartTime'] as Timestamp).toDate();
+          locationHistory.add({
+            'time': DateFormat('MMM dd HH:mm').format(startTime),
+            'action': 'Check In',
+            'location': data['checkInAddress'] ?? 'Location not available',
+            'coordinates': data['checkInLocation'],
+          });
+        }
+
+        if (data['dutyEndTime'] != null) {
+          final endTime = (data['dutyEndTime'] as Timestamp).toDate();
+          locationHistory.add({
+            'time': DateFormat('MMM dd HH:mm').format(endTime),
+            'action': 'Check Out',
+            'location': data['checkOutAddress'] ?? 'Location not available',
+            'coordinates': data['checkOutLocation'],
+          });
+        }
+      }
+
+      // Sort by time descending
+      locationHistory.sort((a, b) => b['time'].compareTo(a['time']));
+
+      setState(() {
+        isLoadingLocation = false;
+      });
+    } catch (e) {
+      print('Error loading location data: $e');
+      setState(() {
+        isLoadingLocation = false;
+      });
+    }
+  }
+
+  Future<void> _loadRecentAttendance() async {
+    try {
+      setState(() {
+        isLoadingAttendance = true;
+      });
+
+      // Get recent 7 days of attendance
+      final now = DateTime.now();
+      final oneWeekAgo = now.subtract(const Duration(days: 7));
+      final startDateStr = DateFormat('yyyy-MM-dd').format(oneWeekAgo);
+      final endDateStr = DateFormat('yyyy-MM-dd').format(now);
+
+      final attendanceQuery = await FirebaseFirestore.instance
+          .collection('attendance')
+          .where('userId', isEqualTo: widget.employee.id)
+          .where('date', isGreaterThanOrEqualTo: startDateStr)
+          .where('date', isLessThanOrEqualTo: endDateStr)
+          .orderBy('date', descending: true)
+          .get();
+
+      // Convert to recent attendance list
+      recentAttendance.clear();
+      for (var doc in attendanceQuery.docs) {
+        final data = doc.data();
+        final dateStr = data['date'] as String;
+        final date = DateTime.parse(dateStr);
+
+        String displayDate;
+        if (DateFormat('yyyy-MM-dd').format(now) == dateStr) {
+          displayDate = 'Today';
+        } else if (DateFormat(
+              'yyyy-MM-dd',
+            ).format(now.subtract(const Duration(days: 1))) ==
+            dateStr) {
+          displayDate = 'Yesterday';
+        } else {
+          displayDate = DateFormat('MMM dd').format(date);
+        }
+
+        String details;
+        Color color;
+
+        switch (data['status']) {
+          case 'present':
+            color = Colors.green;
+            if (data['isOnDuty'] == true) {
+              final checkInTime = data['dutyStartTime'] != null
+                  ? DateFormat(
+                      'hh:mm a',
+                    ).format((data['dutyStartTime'] as Timestamp).toDate())
+                  : 'Unknown';
+              details = '$checkInTime - Working';
+            } else if (data['dutyStartTime'] != null &&
+                data['dutyEndTime'] != null) {
+              final checkInTime = DateFormat(
+                'hh:mm a',
+              ).format((data['dutyStartTime'] as Timestamp).toDate());
+              final checkOutTime = DateFormat(
+                'hh:mm a',
+              ).format((data['dutyEndTime'] as Timestamp).toDate());
+              details = '$checkInTime - $checkOutTime';
+            } else {
+              details = 'Present';
+            }
+            break;
+          case 'leave':
+            color = Colors.orange;
+            details = 'Leave';
+            break;
+          default:
+            color = Colors.red;
+            details = 'Absent';
+        }
+
+        recentAttendance.add({
+          'date': displayDate,
+          'status': (data['status'] ?? 'absent').toString().toUpperCase(),
+          'details': details,
+          'color': color,
+        });
+      }
+
+      setState(() {
+        isLoadingAttendance = false;
+      });
+    } catch (e) {
+      print('Error loading recent attendance: $e');
+      setState(() {
+        isLoadingAttendance = false;
+      });
+    }
   }
 
   @override
@@ -35,23 +359,18 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.employee.name),
-        backgroundColor: AppTheme.primaryColor,
+        backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              _loadEmployeeData();
+            },
+          ),
           IconButton(icon: const Icon(Icons.edit), onPressed: _editEmployee),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: AppTheme.accentColor,
-          tabs: const [
-            Tab(icon: Icon(Icons.person), text: 'Profile'),
-            Tab(icon: Icon(Icons.calendar_month), text: 'Calendar'),
-            Tab(icon: Icon(Icons.location_on), text: 'Location'),
-          ],
-        ),
       ),
       body: TabBarView(
         controller: _tabController,
@@ -60,6 +379,30 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
           _buildCalendarTab(),
           _buildLocationTab(),
         ],
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.black,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.3),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: TabBar(
+          controller: _tabController,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          indicatorColor: Colors.white,
+          indicatorWeight: 3,
+          tabs: const [
+            Tab(icon: Icon(Icons.person, size: 24), text: 'Profile'),
+            Tab(icon: Icon(Icons.calendar_month, size: 24), text: 'Calendar'),
+            Tab(icon: Icon(Icons.location_on, size: 24), text: 'Location'),
+          ],
+        ),
       ),
     );
   }
@@ -150,15 +493,15 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: widget.employee.isActive ? Colors.green : Colors.red,
+                  color: _getEmployeeStatusColor(),
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 8),
               Text(
-                widget.employee.isActive ? 'Active' : 'Inactive',
+                _getEmployeeStatusText(),
                 style: TextStyle(
-                  color: widget.employee.isActive ? Colors.green : Colors.red,
+                  color: _getEmployeeStatusColor(),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -296,29 +639,49 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard('Present Days', '22', Colors.green),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: _buildStatCard('Absent Days', '2', Colors.red)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _buildStatCard('Leave Days', '3', Colors.orange)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  'Working Hours',
-                  '176h',
-                  AppTheme.primaryColor,
+          if (isLoadingStats) ...[
+            const Center(child: CircularProgressIndicator()),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Present Days',
+                    '$presentDays',
+                    Colors.green,
+                  ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    'Absent Days',
+                    '$absentDays',
+                    Colors.red,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Leave Days',
+                    '$leaveDays',
+                    Colors.orange,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    'Working Hours',
+                    '${workingHours}h',
+                    AppTheme.primaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -363,77 +726,12 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildAttendanceCalendar(),
+          // Calendar widget with employee parameter
+          ComprehensiveAttendanceCalendarWidget(employee: widget.employee),
           const SizedBox(height: 20),
           _buildAttendanceHistory(),
         ],
       ),
-    );
-  }
-
-  Widget _buildAttendanceCalendar() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppTheme.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.calendar_month, color: AppTheme.primaryColor),
-              const SizedBox(width: 8),
-              Text(
-                'Attendance Calendar',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SharedCalendarWidget(
-            onDateSelected: (date) {
-              _showAttendanceDetails(date);
-            },
-            showHolidayDetails: true,
-            readOnly: false,
-          ),
-          const SizedBox(height: 16),
-          _buildCalendarLegend(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCalendarLegend() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        _buildLegendItem('Present', Colors.green),
-        _buildLegendItem('Absent', Colors.red),
-        _buildLegendItem('Leave', Colors.orange),
-        _buildLegendItem('Holiday', Colors.blue),
-      ],
-    );
-  }
-
-  Widget _buildLegendItem(String label, Color color) {
-    return Row(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 12)),
-      ],
     );
   }
 
@@ -457,31 +755,27 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
             ),
           ),
           const SizedBox(height: 16),
-          _buildAttendanceItem(
-            'Today',
-            'On Duty',
-            '09:00 AM - Working',
-            Colors.green,
-          ),
-          _buildAttendanceItem(
-            'Yesterday',
-            'Present',
-            '09:15 AM - 06:30 PM',
-            Colors.green,
-          ),
-          _buildAttendanceItem(
-            'Aug 26',
-            'Present',
-            '08:45 AM - 06:15 PM',
-            Colors.green,
-          ),
-          _buildAttendanceItem('Aug 25', 'Leave', 'Sick Leave', Colors.orange),
-          _buildAttendanceItem(
-            'Aug 24',
-            'Present',
-            '09:00 AM - 06:00 PM',
-            Colors.green,
-          ),
+          if (isLoadingAttendance) ...[
+            const Center(child: CircularProgressIndicator()),
+          ] else if (recentAttendance.isEmpty) ...[
+            const Center(
+              child: Text(
+                'No recent attendance data',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          ] else ...[
+            ...recentAttendance
+                .map(
+                  (attendance) => _buildAttendanceItem(
+                    attendance['date'],
+                    attendance['status'],
+                    attendance['details'],
+                    attendance['color'],
+                  ),
+                )
+                .toList(),
+          ],
         ],
       ),
     );
@@ -588,48 +882,109 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
             ],
           ),
           const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            height: 200,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(12),
+          if (isLoadingLocation) ...[
+            Container(
+              width: double.infinity,
+              height: 200,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Center(child: CircularProgressIndicator()),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.map, size: 60, color: Colors.grey[400]),
-                const SizedBox(height: 8),
-                Text(
-                  'Map View Coming Soon',
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-                const SizedBox(height: 16),
-                if (widget.employee.isActive) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
+          ] else ...[
+            Container(
+              width: double.infinity,
+              height: 200,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.map, size: 60, color: Colors.grey[400]),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Map View Coming Soon',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 16),
+                  if (currentLocationData != null &&
+                      currentLocationData!['isOnDuty'] == true) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Currently On Duty'),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (currentLocationData!['lastLocationAddress'] !=
+                        null) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          'Location: ${currentLocationData!['lastLocationAddress']}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      const Text('Currently On Duty'),
+                    ] else ...[
+                      const Text(
+                        'Location: Not available',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Office Location: Main Branch',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
+                    if (currentLocationData!['lastActivityTime'] != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Last update: ${DateFormat('HH:mm').format(currentLocationData!['lastActivityTime'].toDate())}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ] else ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Off Duty'),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Last seen: ${currentLocationData?['lastActivityTime'] != null ? DateFormat('MMM dd, HH:mm').format(currentLocationData!['lastActivityTime'].toDate()) : 'Unknown'}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -655,31 +1010,27 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
             ),
           ),
           const SizedBox(height: 16),
-          _buildLocationHistoryItem(
-            'Today 09:00 AM',
-            'Check In',
-            'Main Office',
-          ),
-          _buildLocationHistoryItem(
-            'Yesterday 06:30 PM',
-            'Check Out',
-            'Main Office',
-          ),
-          _buildLocationHistoryItem(
-            'Yesterday 09:15 AM',
-            'Check In',
-            'Main Office',
-          ),
-          _buildLocationHistoryItem(
-            'Aug 26 06:15 PM',
-            'Check Out',
-            'Main Office',
-          ),
-          _buildLocationHistoryItem(
-            'Aug 26 08:45 AM',
-            'Check In',
-            'Main Office',
-          ),
+          if (isLoadingLocation) ...[
+            const Center(child: CircularProgressIndicator()),
+          ] else if (locationHistory.isEmpty) ...[
+            const Center(
+              child: Text(
+                'No location history available',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          ] else ...[
+            ...locationHistory
+                .take(5)
+                .map(
+                  (location) => _buildLocationHistoryItem(
+                    location['time'],
+                    location['action'],
+                    location['location'],
+                  ),
+                )
+                .toList(),
+          ],
         ],
       ),
     );
@@ -730,32 +1081,6 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen>
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAttendanceDetails(DateTime date) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Attendance - ${DateFormat('MMM dd, yyyy').format(date)}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildDetailRow('Status', 'Present', Icons.check_circle),
-            _buildDetailRow('Check In', '09:15 AM', Icons.login),
-            _buildDetailRow('Check Out', '06:30 PM', Icons.logout),
-            _buildDetailRow('Duration', '9h 15m', Icons.access_time),
-            _buildDetailRow('Location', 'Main Office', Icons.location_on),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
           ),
         ],
       ),

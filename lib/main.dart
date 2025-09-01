@@ -283,4 +283,5 @@ class _AppInitializerState extends State<AppInitializer> {
         borderRadius: BorderRadius.circular(3),
       ),
     );
+  }
 }

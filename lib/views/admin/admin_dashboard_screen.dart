@@ -48,7 +48,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin Panel'),
-        backgroundColor: AppTheme.primaryColor,
+        backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -99,11 +99,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             );
           }),
         ],
-        bottom: TabBar(
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildDashboardTab(),
+          _buildEmployeeManagementTab(),
+          _buildLeaveManagementTab(),
+          _buildCalendarTab(),
+        ],
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.black,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.3),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: TabBar(
           controller: _tabController,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
-          indicatorColor: AppTheme.accentColor,
+          indicatorColor: Colors.white,
           indicatorWeight: 3,
           labelStyle: const TextStyle(
             fontSize: 12,
@@ -116,15 +137,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             Tab(icon: Icon(Icons.calendar_month, size: 20), text: 'Calendar'),
           ],
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildDashboardTab(),
-          _buildEmployeeManagementTab(),
-          _buildLeaveManagementTab(),
-          _buildCalendarTab(),
-        ],
       ),
     );
   }
@@ -172,7 +184,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'Leave Management',
+                  'All Leave Requests',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -181,7 +193,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 ),
                 ElevatedButton.icon(
                   onPressed: () {
-                    leaveController.loadPendingLeaveRequests();
+                    leaveController.loadAllLeaveRequests();
                   },
                   icon: const Icon(Icons.refresh, size: 18),
                   label: const Text('Refresh'),
@@ -198,7 +210,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             const SizedBox(height: 20),
             _buildLeaveRequestStats(),
             const SizedBox(height: 20),
-            _buildPendingLeaveRequests(),
+            _buildAllLeaveRequests(),
           ],
         ),
       ),
@@ -297,7 +309,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     );
   }
 
-  Widget _buildPendingLeaveRequests() {
+  Widget _buildAllLeaveRequests() {
     return Card(
       elevation: 2,
       child: Padding(
@@ -306,7 +318,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Pending Leave Requests',
+              'All Leave Requests',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -337,7 +349,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                         ),
                         SizedBox(height: 8),
                         Text(
-                          'No pending leave requests',
+                          'No leave requests found',
                           style: TextStyle(color: Colors.grey),
                         ),
                       ],
@@ -353,7 +365,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 separatorBuilder: (context, index) => const Divider(),
                 itemBuilder: (context, index) {
                   final request = leaveController.pendingLeaveRequests[index];
-                  return _buildPendingLeaveRequestItem(request);
+                  return _buildLeaveRequestItem(request);
                 },
               );
             }),
@@ -363,7 +375,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     );
   }
 
-  Widget _buildPendingLeaveRequestItem(LeaveRequest request) {
+  Widget _buildLeaveRequestItem(LeaveRequest request) {
     final leaveType = LeaveType.values.firstWhere(
       (type) => type.name == request.leaveType,
       orElse: () => LeaveType.casual,

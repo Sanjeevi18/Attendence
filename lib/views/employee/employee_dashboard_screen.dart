@@ -10,7 +10,7 @@ import '../../controllers/location_controller.dart';
 import '../../controllers/leave_request_controller.dart';
 import '../../models/leave_request_model.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/enhanced_attendance_calendar_widget.dart';
+import '../../widgets/comprehensive_attendance_calendar_widget.dart';
 import 'employee_profile_screen.dart';
 
 class EmployeeDashboardScreen extends StatefulWidget {
@@ -23,35 +23,43 @@ class EmployeeDashboardScreen extends StatefulWidget {
 
 class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
     with TickerProviderStateMixin {
-  late TabController _tabController;
+  int _selectedIndex = 0;
   final attendanceController = Get.put(AttendanceController());
   final authController = Get.find<AuthController>();
   final leaveController = Get.put(LeaveRequestController());
+
+  // Google Maps related variables
   GoogleMapController? _mapController;
+  Set<Marker> _markers = {};
+  bool _isMapReady = false;
+  StreamSubscription<Position>? _positionStreamSubscription;
+  DateTime? _lastLocationUpdate;
+  static const Duration _locationUpdateThrottle = Duration(seconds: 5);
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
     _loadInitialData();
-    _setupLocationTracking();
+    // Delay location setup to ensure proper initialization
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setupLocationTracking();
+    });
   }
 
   Future<void> _setupLocationTracking() async {
     final locationController = Get.put(LocationController());
 
+    // Request permissions first
+    await _requestLocationPermissions();
+
     // Start location tracking
     await locationController.getCurrentLocation();
 
-    // Listen for location changes and update map
-    ever(locationController.currentLocation, (Position? newLocation) {
-      if (newLocation != null && _mapController != null) {
-        _animateToUserLocation(newLocation);
-      }
-    });
+    // Setup real-time location tracking
+    _startRealTimeLocationTracking();
 
-    // Auto-refresh location every 10 seconds for real-time tracking
-    Timer.periodic(const Duration(seconds: 10), (timer) {
+    // Auto-refresh location every 30 seconds for fallback
+    Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
         locationController.getCurrentLocation();
       } else {
@@ -60,9 +68,126 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
     });
   }
 
+  Future<void> _requestLocationPermissions() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Test if location services are enabled
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      // Location services are not enabled
+      Get.snackbar(
+        'Location Services',
+        'Please enable location services to use this feature',
+        backgroundColor: Colors.black54,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        Get.snackbar(
+          'Permission Denied',
+          'Location permissions are required for attendance tracking',
+          backgroundColor: Colors.black54,
+          colorText: Colors.white,
+        );
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      Get.snackbar(
+        'Permission Denied Forever',
+        'Please enable location permissions in settings',
+        backgroundColor: Colors.black54,
+        colorText: Colors.white,
+      );
+      return;
+    }
+  }
+
+  void _startRealTimeLocationTracking() {
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 20, // Update every 20 meters (increased from 10)
+      timeLimit: Duration(seconds: 30), // Max 30 seconds per update
+    );
+
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+          (Position position) {
+            if (mounted) {
+              _updateLocationOnMap(position);
+              // Trigger location update in controller less frequently
+              final locationController = Get.find<LocationController>();
+              if (_lastLocationUpdate == null ||
+                  DateTime.now().difference(_lastLocationUpdate!) >
+                      const Duration(seconds: 30)) {
+                locationController.getCurrentLocation();
+              }
+            }
+          },
+          onError: (error) {
+            print('Location stream error: $error');
+          },
+        );
+  }
+
+  void _updateLocationOnMap(Position position) {
+    if (!mounted) return;
+
+    // Throttle location updates to prevent excessive setState calls
+    final now = DateTime.now();
+    if (_lastLocationUpdate != null &&
+        now.difference(_lastLocationUpdate!) < _locationUpdateThrottle) {
+      return;
+    }
+    _lastLocationUpdate = now;
+
+    if (_mapController != null && _isMapReady) {
+      try {
+        final LatLng newPosition = LatLng(
+          position.latitude,
+          position.longitude,
+        );
+
+        // Update camera position with animation (non-blocking)
+        _mapController!.animateCamera(CameraUpdate.newLatLng(newPosition));
+
+        // Update marker with throttling
+        if (mounted) {
+          setState(() {
+            _markers = {
+              Marker(
+                markerId: const MarkerId('current_location'),
+                position: newPosition,
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueRed,
+                ),
+                infoWindow: InfoWindow(
+                  title: 'Current Location',
+                  snippet:
+                      'Lat: ${position.latitude.toStringAsFixed(6)}, '
+                      'Lng: ${position.longitude.toStringAsFixed(6)}',
+                ),
+              ),
+            };
+          });
+        }
+      } catch (e) {
+        print('Error updating map location: $e');
+      }
+    }
+  }
+
   @override
   void dispose() {
-    _tabController.dispose();
+    _mapController?.dispose();
+    _positionStreamSubscription?.cancel();
     super.dispose();
   }
 
@@ -123,26 +248,40 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
             );
           }),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          labelStyle: const TextStyle(fontWeight: FontWeight.w600),
-          tabs: const [
-            Tab(text: 'Dashboard', icon: Icon(Icons.dashboard, size: 20)),
-            Tab(text: 'Calendar', icon: Icon(Icons.calendar_month, size: 20)),
-            Tab(text: 'Leave', icon: Icon(Icons.event_available, size: 20)),
-          ],
-        ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: IndexedStack(
+        index: _selectedIndex,
         children: [
           _buildDashboardTab(),
           _buildCalendarTab(),
           _buildLeaveRequestTab(),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: _selectedIndex,
+        selectedItemColor: AppTheme.primaryColor,
+        unselectedItemColor: Colors.grey,
+        backgroundColor: Colors.white,
+        elevation: 8,
+        onTap: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_month),
+            label: 'Calendar',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.event_available),
+            label: 'Leave',
+          ),
         ],
       ),
     );
@@ -233,16 +372,16 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
             () => Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: attendanceController.hasCheckedInToday.value
-                    ? Colors.green.withOpacity(0.9)
-                    : Colors.red.withOpacity(0.9),
+                color: attendanceController.onDuty.value
+                    ? Colors.black.withOpacity(0.9)
+                    : Colors.black54.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    attendanceController.hasCheckedInToday.value
+                    attendanceController.onDuty.value
                         ? Icons.check_circle
                         : Icons.schedule,
                     color: Colors.white,
@@ -250,19 +389,17 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    attendanceController.hasCheckedInToday.value
-                        ? 'ON DUTY'
-                        : 'OFF DUTY',
+                    attendanceController.onDuty.value ? 'ON DUTY' : 'OFF DUTY',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  if (attendanceController.hasCheckedInToday.value &&
-                      attendanceController.checkInTime.value != null)
+                  if (attendanceController.onDuty.value &&
+                      attendanceController.dutyStartTime.value != null)
                     Text(
-                      ' - Since ${DateFormat('hh:mm a').format(attendanceController.checkInTime.value!)}',
+                      ' - Since ${DateFormat('hh:mm a').format(attendanceController.dutyStartTime.value!)}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,
@@ -279,275 +416,381 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
   }
 
   Widget _buildEnhancedLocationWidget() {
-    final locationController = Get.put(LocationController());
+    final locationController = Get.find<LocationController>();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Location Header
-        Container(
-          padding: const EdgeInsets.all(16),
+    return Obx(() {
+      try {
+        final isLoading = locationController.isLoading.value;
+        final hasPermission = locationController.hasPermission.value;
+        final currentLocation = locationController.currentLocation.value;
+        final currentAddress = locationController.currentAddress.value;
+
+        return Container(
+          width: double.infinity,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppTheme.primaryColor, Color(0xFF1565C0)],
+            gradient: LinearGradient(
+              colors: [Colors.grey.shade200, Colors.white],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade400, width: 1),
             boxShadow: [
               BoxShadow(
-                color: AppTheme.primaryColor.withOpacity(0.3),
+                color: Colors.black.withOpacity(0.1),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),
             ],
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.location_on,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
                   children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.map, color: Colors.black87, size: 20),
+                    ),
+                    const SizedBox(width: 12),
                     const Text(
-                      'Current Location',
+                      'Live Location & Map',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppTheme.primaryColor,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Obx(
-                      () => Text(
-                        locationController.hasPermission.value
-                            ? 'GPS tracking active'
-                            : 'Location permission required',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Obx(
-                () => locationController.isLoading.value
-                    ? const SizedBox(
+                    const Spacer(),
+                    if (isLoading)
+                      const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
-                          color: Colors.white,
                           strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.black,
+                          ),
                         ),
                       )
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            onPressed: () {
-                              locationController.forceHighAccuracyUpdate();
-                            },
-                            icon: const Icon(
-                              Icons.gps_fixed,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                            tooltip: 'High Accuracy GPS',
+                    else
+                      IconButton(
+                        icon: const Icon(
+                          Icons.my_location,
+                          color: Colors.black,
+                        ),
+                        onPressed: () =>
+                            locationController.getCurrentLocation(),
+                        tooltip: 'Refresh Location',
+                      ),
+                  ],
+                ),
+              ),
+
+              // Map Section
+              if (!hasPermission)
+                Container(
+                  height: 200,
+                  margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade400),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.location_disabled,
+                        color: Colors.black54,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Location Permission Required',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Enable location access to view the map and track attendance',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 14, color: Colors.black54),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () => _requestLocationPermissions(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black87,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Grant Permission'),
+                      ),
+                    ],
+                  ),
+                )
+              else if (currentLocation != null)
+                Container(
+                  height: 250,
+                  margin: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: GoogleMap(
+                      onMapCreated: (GoogleMapController controller) {
+                        try {
+                          _mapController = controller;
+                          _isMapReady = true;
+
+                          // Set initial marker
+                          final LatLng initialPosition = LatLng(
+                            currentLocation.latitude,
+                            currentLocation.longitude,
+                          );
+
+                          if (mounted) {
+                            setState(() {
+                              _markers = {
+                                Marker(
+                                  markerId: const MarkerId('current_location'),
+                                  position: initialPosition,
+                                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                                    BitmapDescriptor.hueRed,
+                                  ),
+                                  infoWindow: InfoWindow(
+                                    title: 'Current Location',
+                                    snippet:
+                                        'Lat: ${currentLocation.latitude.toStringAsFixed(6)}, '
+                                        'Lng: ${currentLocation.longitude.toStringAsFixed(6)}',
+                                  ),
+                                ),
+                              };
+                            });
+                          }
+                        } catch (e) {
+                          print('Error initializing map: $e');
+                        }
+                      },
+                      initialCameraPosition: CameraPosition(
+                        target: LatLng(
+                          currentLocation.latitude,
+                          currentLocation.longitude,
+                        ),
+                        zoom: 16.0,
+                      ),
+                      markers: _markers,
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: true,
+                      compassEnabled: true,
+                      mapToolbarEnabled: false,
+                      zoomControlsEnabled: false,
+                      mapType: MapType.normal,
+                      onTap: (LatLng position) {
+                        // Optionally handle map taps
+                      },
+                    ),
+                  ),
+                )
+              else if (isLoading)
+                Container(
+                  height: 200,
+                  margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text(
+                          'Getting your location...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w500,
                           ),
-                          IconButton(
-                            onPressed: () {
-                              locationController.refreshLocation();
-                            },
-                            icon: const Icon(
-                              Icons.refresh,
-                              color: Colors.white,
-                              size: 20,
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Please wait while we locate you',
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  height: 200,
+                  margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.location_off,
+                        color: Colors.grey.shade600,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Unable to get location',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Please check your internet connection and GPS',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () =>
+                            locationController.getCurrentLocation(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black87,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Location Details Section
+              if (currentLocation != null && currentAddress.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade400),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.my_location,
+                            size: 16,
+                            color: Colors.green,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${currentLocation.latitude.toStringAsFixed(6)}, ${currentLocation.longitude.toStringAsFixed(6)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[700],
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w500,
                             ),
-                            tooltip: 'Refresh Location',
                           ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.place,
+                            size: 16,
+                            color: Colors.black54,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              currentAddress,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.black87,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.access_time,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Updated: ${DateFormat('hh:mm:ss a').format(DateTime.now())}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      } catch (e) {
+        print('Error in enhanced location widget: $e');
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.red.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.red.shade200),
+          ),
+          child: const Column(
+            children: [
+              Icon(Icons.error_outline, color: Colors.red, size: 24),
+              SizedBox(height: 8),
+              Text(
+                'Location widget error',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                'Please try refreshing the app',
+                style: TextStyle(color: Colors.red),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 12),
-
-        // Enhanced map preview with Google Maps
-        Container(
-          height: 200,
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[300]!),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Stack(
-              children: [
-                // Real Google Maps with live location tracking
-                Obx(() {
-                  final userLocation = locationController.currentLocation.value;
-                  final defaultLocation = const LatLng(
-                    28.6139,
-                    77.2090,
-                  ); // Delhi default
-
-                  return GoogleMap(
-                    onMapCreated: (GoogleMapController controller) {
-                      _mapController = controller;
-                      // Auto-zoom to user location when map is ready
-                      if (userLocation != null) {
-                        _animateToUserLocation(userLocation);
-                      }
-                    },
-                    initialCameraPosition: CameraPosition(
-                      target: userLocation != null
-                          ? LatLng(
-                              userLocation.latitude,
-                              userLocation.longitude,
-                            )
-                          : defaultLocation,
-                      zoom: 16.0,
-                    ),
-                    markers: _buildRealTimeMarkers(),
-                    myLocationEnabled: true,
-                    myLocationButtonEnabled: false,
-                    zoomControlsEnabled: false,
-                    mapToolbarEnabled: false,
-                    compassEnabled: true,
-                    mapType: MapType.normal,
-                    onCameraMove: (CameraPosition position) {
-                      // Optional: Handle camera movement
-                    },
-                  );
-                }),
-
-                // Loading overlay
-                Obx(
-                  () => locationController.isLoading.value
-                      ? Container(
-                          color: Colors.black.withOpacity(0.2),
-                          child: const Center(
-                            child: CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                              strokeWidth: 3,
-                            ),
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-
-                // Location status overlay
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Obx(
-                    () => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: locationController.isWithinOfficeRadius()
-                            ? Colors.green.withOpacity(0.9)
-                            : Colors.red.withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            locationController.isWithinOfficeRadius()
-                                ? Icons.check_circle
-                                : Icons.warning,
-                            color: Colors.white,
-                            size: 12,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            locationController.isWithinOfficeRadius()
-                                ? 'In Range'
-                                : 'GPS',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 12),
-
-        // Address display
-        Obx(
-          () => Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: locationController.hasPermission.value
-                  ? Colors.blue.withOpacity(0.05)
-                  : Colors.red.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: locationController.hasPermission.value
-                    ? Colors.blue.withOpacity(0.2)
-                    : Colors.red.withOpacity(0.2),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  locationController.hasPermission.value
-                      ? Icons.location_on
-                      : Icons.location_disabled,
-                  color: locationController.hasPermission.value
-                      ? Colors.blue[600]
-                      : Colors.red[600],
-                  size: 16,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    locationController.currentAddress.value,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: locationController.hasPermission.value
-                          ? Colors.blue[700]
-                          : Colors.red[700],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
+        );
+      }
+    });
   }
 
   Widget _buildAttendanceButtons() {
@@ -555,7 +798,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
     return Obx(() {
       final isCheckingLocation = locationController.isLoading.value;
       final isCheckingAttendance = attendanceController.isLoading.value;
-      final hasCheckedIn = attendanceController.hasCheckedInToday.value;
+      final hasCheckedIn = attendanceController.onDuty.value;
       final onLeave = leaveController.userLeaveRequests.any((request) {
         final today = DateTime.now();
         return request.status.toLowerCase() == 'approved' &&
@@ -582,19 +825,19 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
               padding: const EdgeInsets.all(12),
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
+                color: Colors.black.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                border: Border.all(color: Colors.black.withOpacity(0.5)),
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.orange),
+                  Icon(Icons.info_outline, color: Colors.black54),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       'You are on an approved leave today. Check-in/out is disabled.',
                       style: TextStyle(
-                        color: Colors.orange,
+                        color: Colors.black54,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -695,7 +938,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
                   'View History',
                   Icons.history,
                   Colors.blue,
-                  () => _tabController.animateTo(1),
+                  () => setState(() => _selectedIndex = 1),
                 ),
               ),
               const SizedBox(width: 12),
@@ -704,7 +947,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
                   'Leave Request',
                   Icons.event_available,
                   Colors.orange,
-                  () => _tabController.animateTo(2),
+                  () => setState(() => _selectedIndex = 2),
                 ),
               ),
             ],
@@ -779,7 +1022,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
   Widget _buildCalendarTab() {
     return const Padding(
       padding: EdgeInsets.all(16),
-      child: EnhancedAttendanceCalendarWidget(),
+      child: const ComprehensiveAttendanceCalendarWidget(),
     );
   }
 
@@ -1359,116 +1602,117 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
   }
 
   Widget _buildLeaveHistory() {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Recent Leave Requests',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    leaveController.loadUserLeaveRequests();
-                  },
-                  child: const Text('Refresh'),
-                ),
-              ],
+            const Text(
+              'Leave Requests',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primaryColor,
+              ),
             ),
-            const SizedBox(height: 12),
-            // Status filter options
-            _buildStatusFilter(),
-            const SizedBox(height: 12),
-            Obx(() {
-              if (leaveController.isLoading.value) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
-                      strokeWidth: 3,
-                    ),
-                  ),
-                );
-              }
-
-              if (leaveController.error.value.isNotEmpty) {
-                return Container(
-                  padding: const EdgeInsets.all(20),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          size: 48,
-                          color: Colors.red,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          leaveController.error.value,
-                          style: const TextStyle(color: Colors.red),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        ElevatedButton(
-                          onPressed: () {
-                            leaveController.error.value = '';
-                            leaveController.loadUserLeaveRequests();
-                          },
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              if (leaveController.userLeaveRequests.isEmpty) {
-                return Container(
-                  padding: const EdgeInsets.all(20),
-                  child: const Center(
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.event_available,
-                          size: 48,
-                          color: Colors.grey,
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'No leave requests found',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: leaveController.userLeaveRequests.length,
-                separatorBuilder: (context, index) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final request = leaveController.userLeaveRequests[index];
-                  return _buildLeaveRequestItem(request);
-                },
-              );
-            }),
+            TextButton(
+              onPressed: () {
+                leaveController.loadUserLeaveRequests();
+              },
+              child: const Text('Refresh'),
+            ),
           ],
         ),
-      ),
+        const SizedBox(height: 12),
+        // Status filter options
+        _buildStatusFilter(),
+        const SizedBox(height: 16),
+        Obx(() {
+          if (leaveController.isLoading.value) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                  strokeWidth: 3,
+                ),
+              ),
+            );
+          }
+
+          if (leaveController.error.value.isNotEmpty) {
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red[200]!),
+              ),
+              child: Center(
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      leaveController.error.value,
+                      style: const TextStyle(color: Colors.red),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        leaveController.error.value = '';
+                        leaveController.loadUserLeaveRequests();
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          if (leaveController.userLeaveRequests.isEmpty) {
+            return Container(
+              height: 200,
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.event_available, size: 48, color: Colors.grey),
+                    SizedBox(height: 8),
+                    Text(
+                      'No leave requests found',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: leaveController.userLeaveRequests.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final request = leaveController.userLeaveRequests[index];
+              return _buildLeaveRequestItem(request);
+            },
+          );
+        }),
+      ],
     );
   }
 
@@ -1520,109 +1764,151 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
       orElse: () => LeaveType.casual,
     );
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
-      leading: CircleAvatar(
-        backgroundColor: leaveType.color.withOpacity(0.1),
-        child: Icon(leaveType.icon, color: leaveType.color, size: 20),
-      ),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              leaveType.displayName,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: statusColor.withOpacity(0.3)),
-            ),
-            child: Text(
-              request.status.toUpperCase(),
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 9,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Icon(Icons.calendar_today, size: 12, color: Colors.grey[600]),
-              const SizedBox(width: 4),
-              Text(
-                '${DateFormat('MMM dd').format(request.fromDate)} - ${DateFormat('MMM dd, yyyy').format(request.toDate)}',
-                style: TextStyle(color: Colors.grey[600], fontSize: 11),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: CircleAvatar(
+          backgroundColor: leaveType.color.withOpacity(0.1),
+          child: Icon(leaveType.icon, color: leaveType.color, size: 20),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                leaveType.displayName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
               ),
-              const SizedBox(width: 8),
-              Icon(Icons.schedule, size: 12, color: Colors.grey[600]),
-              const SizedBox(width: 4),
-              Text(
-                '${request.totalDays} ${request.totalDays == 1 ? 'day' : 'days'}',
-                style: TextStyle(color: Colors.grey[600], fontSize: 11),
-              ),
-            ],
-          ),
-          if (request.reason.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              request.reason,
-              style: TextStyle(color: Colors.grey[700], fontSize: 11),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
-          ],
-          if (request.adminComments != null &&
-              request.adminComments!.isNotEmpty) ...[
-            const SizedBox(height: 4),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
+                color: statusColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: statusColor.withOpacity(0.3)),
               ),
               child: Text(
-                'Admin: ${request.adminComments!}',
-                style: const TextStyle(fontSize: 10, color: Colors.blue),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                request.status.toUpperCase(),
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
-        ],
-      ),
-      trailing: request.status == 'pending'
-          ? PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, size: 18),
-              onSelected: (value) {
-                if (value == 'delete') {
-                  _showDeleteConfirmation(request);
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, size: 16, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Delete', style: TextStyle(fontSize: 12)),
-                    ],
-                  ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                const SizedBox(width: 6),
+                Text(
+                  '${DateFormat('MMM dd').format(request.fromDate)} - ${DateFormat('MMM dd, yyyy').format(request.toDate)}',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
+                const SizedBox(width: 12),
+                Icon(Icons.schedule, size: 14, color: Colors.grey[600]),
+                const SizedBox(width: 6),
+                Text(
+                  '${request.totalDays} ${request.totalDays == 1 ? 'day' : 'days'}',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
                 ),
               ],
-            )
-          : null,
+            ),
+            if (request.reason.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.description, size: 14, color: Colors.grey[600]),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      request.reason,
+                      style: TextStyle(color: Colors.grey[700], fontSize: 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (request.adminComments != null &&
+                request.adminComments!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.admin_panel_settings,
+                      size: 12,
+                      color: Colors.blue,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        'Admin: ${request.adminComments!}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.blue,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        trailing: request.status == 'pending'
+            ? PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, size: 18),
+                onSelected: (value) {
+                  if (value == 'delete') {
+                    _showDeleteConfirmation(request);
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete, size: 16, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Delete', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            : null,
+      ),
     );
   }
 
@@ -1647,56 +1933,6 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
     );
   }
 
-  // Google Maps helper methods
-  void _animateToUserLocation(Position userLocation) {
-    if (_mapController != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(userLocation.latitude, userLocation.longitude),
-            zoom: 16.0,
-          ),
-        ),
-      );
-    }
-  }
-
-  Set<Marker> _buildRealTimeMarkers() {
-    final locationController = Get.find<LocationController>();
-    Set<Marker> markers = {};
-
-    // Office marker (red marker like Google Maps)
-    markers.add(
-      const Marker(
-        markerId: MarkerId('office'),
-        position: LatLng(28.6139, 77.2090), // Office coordinates
-        infoWindow: InfoWindow(
-          title: 'Office Location',
-          snippet: 'Company Office',
-        ),
-        icon: BitmapDescriptor.defaultMarker, // Red marker
-      ),
-    );
-
-    // User location marker (blue dot like Google Maps)
-    if (locationController.currentLocation.value != null) {
-      final userLoc = locationController.currentLocation.value!;
-      markers.add(
-        Marker(
-          markerId: const MarkerId('user'),
-          position: LatLng(userLoc.latitude, userLoc.longitude),
-          infoWindow: const InfoWindow(
-            title: 'Your Location',
-            snippet: 'Current Position',
-          ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        ),
-      );
-    }
-
-    return markers;
-  }
-
   // Helper methods
   Future<void> _handleCheckIn() async {
     final locationController = Get.find<LocationController>();
@@ -1707,11 +1943,18 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
         return;
       }
 
-      final isLeave = await attendanceController.isUserOnLeaveToday(userId);
-      if (isLeave) {
+      // Check if user is on leave today
+      final onLeave = leaveController.userLeaveRequests.any((request) {
+        final today = DateTime.now();
+        return request.status.toLowerCase() == 'approved' &&
+            today.isAfter(request.fromDate.subtract(const Duration(days: 1))) &&
+            today.isBefore(request.toDate.add(const Duration(days: 1)));
+      });
+
+      if (onLeave) {
         Get.snackbar(
-          'Check-in Failed',
-          'You are on an approved leave today. Cannot check in.',
+          'Cannot Start Duty',
+          'You are on an approved leave today. Cannot start duty.',
           backgroundColor: Colors.red,
           colorText: Colors.white,
           snackPosition: SnackPosition.BOTTOM,
@@ -1722,35 +1965,20 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
       // Get current location to update admin
       await locationController.getCurrentLocation();
 
-      // Proceed with check-in (this will automatically send location to admin)
-      await attendanceController.checkIn();
+      // Start duty
+      await attendanceController.toggleDuty();
 
-      // Refresh today's status to update the UI
-      await attendanceController.checkTodayStatus();
-
-      // --- MODIFICATION: Replaced snackbar with a persistent alert dialog ---
-      await Get.dialog(
-        AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text('Check-in Successful'),
-          content: const Text(
-            'You are now ON DUTY. Your location has been shared with the admin.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Get.back(), // Closes the dialog
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-        barrierDismissible: false, // User must press OK to dismiss
+      Get.snackbar(
+        'Duty Started',
+        'You are now ON DUTY. Your location has been shared with the admin.',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
       );
     } catch (e) {
       Get.snackbar(
-        'Check-in Failed',
-        'Unable to process check-in. Please try again.',
+        'Failed to Start Duty',
+        'Unable to start duty. Please try again.',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,
@@ -1767,13 +1995,11 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
         return;
       }
 
-      // Check for an active check-in record
-      final isOnDuty = await attendanceController.isUserOnDuty(userId);
-      if (!isOnDuty) {
+      if (!attendanceController.onDuty.value) {
         Get.snackbar(
-          'Check-out Failed',
-          'You are not currently checked in.',
-          backgroundColor: Colors.red,
+          'Not On Duty',
+          'You are not currently on duty.',
+          backgroundColor: Colors.orange,
           colorText: Colors.white,
           snackPosition: SnackPosition.BOTTOM,
         );
@@ -1783,24 +2009,20 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
       // Get current location to update admin
       await locationController.getCurrentLocation();
 
-      // Proceed with check-out
-      await attendanceController.checkOut();
-
-      // Refresh today's status to update the UI
-      await attendanceController.checkTodayStatus();
+      // End duty
+      await attendanceController.toggleDuty();
 
       Get.snackbar(
-        'Check-out Successful',
-        'Your location has been updated to admin',
+        'Duty Ended',
+        'You are now OFF DUTY. Your location has been updated to admin.',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.green,
         colorText: Colors.white,
-        duration: const Duration(seconds: 2),
       );
     } catch (e) {
       Get.snackbar(
-        'Check-out Failed',
-        'Unable to process check-out. Please try again.',
+        'Failed to End Duty',
+        'Unable to end duty. Please try again.',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red,
         colorText: Colors.white,

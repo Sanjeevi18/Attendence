@@ -454,7 +454,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                       child: _buildHorizontalStatCard(
                         'Absent Days',
                         '${attendanceController.employeeAbsentDays.value}',
-                        AppTheme.errorColor,
+                        Colors.black54,
                         Icons.cancel_outlined,
                       ),
                     ),
@@ -467,7 +467,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                       child: _buildHorizontalStatCard(
                         'Leave Days',
                         '${attendanceController.employeeLeaveDays.value}',
-                        AppTheme.warningColor,
+                        Colors.black38,
                         Icons.event_busy_outlined,
                       ),
                     ),

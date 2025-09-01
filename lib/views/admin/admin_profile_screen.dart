@@ -91,7 +91,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Profile'),
-        backgroundColor: AppTheme.primaryColor,
+        backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
