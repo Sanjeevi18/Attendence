@@ -113,15 +113,25 @@ class _ComprehensiveAttendanceCalendarWidgetState
       final endDateStr = DateFormat('yyyy-MM-dd').format(endDate);
 
       // Fetch attendance records for the date range
+      // Using a simpler query to avoid index requirement temporarily
       final attendanceQuery = await _firestore
           .collection('attendance')
           .where('userId', isEqualTo: employeeId)
-          .where('date', isGreaterThanOrEqualTo: startDateStr)
-          .where('date', isLessThanOrEqualTo: endDateStr)
           .get();
 
+      // Filter results in memory for date range until index is created
+      final filteredDocs = attendanceQuery.docs.where((doc) {
+        final data = doc.data();
+        final dateStr = data['date'] as String?;
+        if (dateStr == null) return false;
+
+        // Simple date comparison
+        return dateStr.compareTo(startDateStr) >= 0 &&
+            dateStr.compareTo(endDateStr) <= 0;
+      }).toList();
+
       // Process attendance records
-      for (var doc in attendanceQuery.docs) {
+      for (var doc in filteredDocs) {
         final data = doc.data();
         final dateStr = data['date'] as String;
 

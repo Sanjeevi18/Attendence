@@ -8,6 +8,7 @@ class Holiday {
   final DateTime date;
   final String type; // 'national', 'company', 'optional'
   final bool isRecurring;
+  final bool markedAsLeave; // New field to mark holiday as leave day
   final DateTime createdAt;
   final String createdBy;
 
@@ -19,6 +20,7 @@ class Holiday {
     required this.date,
     this.type = 'Company',
     this.isRecurring = false,
+    this.markedAsLeave = false, // Default to false
     required this.createdAt,
     required this.createdBy,
   });
@@ -32,6 +34,7 @@ class Holiday {
       'date': date.millisecondsSinceEpoch,
       'type': type,
       'isRecurring': isRecurring ? 1 : 0,
+      'markedAsLeave': markedAsLeave ? 1 : 0,
       'createdAt': createdAt.millisecondsSinceEpoch,
       'createdBy': createdBy,
     };
@@ -46,6 +49,7 @@ class Holiday {
       'date': Timestamp.fromDate(date),
       'type': type,
       'isRecurring': isRecurring,
+      'markedAsLeave': markedAsLeave,
       'createdAt': Timestamp.fromDate(createdAt),
       'createdBy': createdBy,
     };
@@ -66,6 +70,9 @@ class Holiday {
       isRecurring: map['isRecurring'] is int
           ? map['isRecurring'] == 1
           : (map['isRecurring'] ?? false),
+      markedAsLeave: map['markedAsLeave'] is int
+          ? map['markedAsLeave'] == 1
+          : (map['markedAsLeave'] ?? false),
       createdAt: map['createdAt'] is int
           ? DateTime.fromMillisecondsSinceEpoch(map['createdAt'])
           : (map['createdAt'] is Timestamp
@@ -89,6 +96,7 @@ class Holiday {
     DateTime? date,
     String? type,
     bool? isRecurring,
+    bool? markedAsLeave,
     DateTime? createdAt,
     String? createdBy,
   }) {
@@ -100,6 +108,7 @@ class Holiday {
       date: date ?? this.date,
       type: type ?? this.type,
       isRecurring: isRecurring ?? this.isRecurring,
+      markedAsLeave: markedAsLeave ?? this.markedAsLeave,
       createdAt: createdAt ?? this.createdAt,
       createdBy: createdBy ?? this.createdBy,
     );

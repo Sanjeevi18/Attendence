@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../models/leave_request_model.dart';
 import '../controllers/auth_controller.dart';
+import '../utils/snackbar_utils.dart';
 
 class LeaveRequestController extends GetxController {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -16,6 +17,7 @@ class LeaveRequestController extends GetxController {
 
   final RxList<LeaveRequest> userLeaveRequests = <LeaveRequest>[].obs;
   final RxList<LeaveRequest> pendingLeaveRequests = <LeaveRequest>[].obs;
+  final RxList<LeaveRequest> allLeaveRequests = <LeaveRequest>[].obs;
   final RxBool isLoading = false.obs;
   final RxString error = ''.obs;
 
@@ -140,6 +142,7 @@ class LeaveRequestController extends GetxController {
     loadUserLeaveRequests();
     if (_authController.currentUser.value?.isAdmin == true) {
       loadPendingLeaveRequests();
+      loadAllLeaveRequests(); // Load all requests for admin dashboard
     }
   }
 
@@ -263,7 +266,12 @@ class LeaveRequestController extends GetxController {
           .map((doc) => LeaveRequest.fromMap(doc.data(), doc.id))
           .toList();
 
-      pendingLeaveRequests.value = requests; // Using same list for simplicity
+      allLeaveRequests.value = requests;
+
+      // Also update pending requests list for backward compatibility
+      pendingLeaveRequests.value = requests
+          .where((request) => request.status == 'pending')
+          .toList();
     } catch (e) {
       error.value = 'Failed to load leave requests: $e';
       print('Error loading all leave requests: $e');
@@ -353,25 +361,15 @@ class LeaveRequestController extends GetxController {
         'reviewedBy': user.name,
       });
 
-      Get.snackbar(
-        'Success',
-        'Leave request approved',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      SnackbarUtils.showBottomSuccess('Leave request approved');
 
+      // Reload both lists for admin dashboard
       await loadPendingLeaveRequests();
+      await loadAllLeaveRequests();
       return true;
     } catch (e) {
       error.value = 'Failed to approve request: $e';
-      Get.snackbar(
-        'Error',
-        'Failed to approve request: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      SnackbarUtils.showBottomError('Failed to approve request: $e');
       return false;
     } finally {
       isLoading.value = false;
@@ -394,25 +392,15 @@ class LeaveRequestController extends GetxController {
         'reviewedBy': user.name,
       });
 
-      Get.snackbar(
-        'Success',
-        'Leave request rejected',
-        backgroundColor: Colors.orange,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      SnackbarUtils.showBottomWarning('Leave request rejected');
 
+      // Reload both lists for admin dashboard
       await loadPendingLeaveRequests();
+      await loadAllLeaveRequests();
       return true;
     } catch (e) {
       error.value = 'Failed to reject request: $e';
-      Get.snackbar(
-        'Error',
-        'Failed to reject request: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      SnackbarUtils.showBottomError('Failed to reject request: $e');
       return false;
     } finally {
       isLoading.value = false;

@@ -128,7 +128,7 @@ class OnboardingScreen extends StatelessWidget {
                         ),
                       ),
                       child: const Text(
-                        'Click In',
+                        'Check In',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,

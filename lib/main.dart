@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:lottie/lottie.dart';
 import 'firebase_options.dart';
 import 'controllers/auth_controller.dart';
 import 'controllers/holiday_controller.dart';
 import 'controllers/attendance_controller.dart';
+import 'controllers/location_controller.dart';
 import 'models/user_model.dart';
 import 'views/auth/onboarding_screen.dart';
 import 'views/auth/login_screen.dart';
@@ -32,6 +34,7 @@ class LightsAttendanceApp extends StatelessWidget {
   Widget build(BuildContext context) {
     // Initialize controllers
     Get.put(AuthController());
+    Get.put(LocationController());
 
     return GetMaterialApp(
       title: 'Lights Attendance Management',
@@ -126,161 +129,37 @@ class _AppInitializerState extends State<AppInitializer> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF000000), // Pure black
-              Color(0xFF1a1a1a), // Dark gray
-              Color(0xFF2d2d2d), // Medium gray
-            ],
-          ),
-        ),
+        decoration: const BoxDecoration(color: Colors.white),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Modern Loading Animation Container
+              // Sandy Loading Animation
               Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
-                    width: 2,
-                  ),
-                ),
-                child: Stack(
-                  children: [
-                    // Rotating border
-                    Positioned.fill(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white.withOpacity(0.8),
-                        ),
-                      ),
-                    ),
-                    // Center icon
-                    Center(
-                      child: Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.white.withOpacity(0.3),
-                              blurRadius: 20,
-                              spreadRadius: 5,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.access_time,
-                          color: Colors.black,
-                          size: 30,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 50),
-              // App Title with modern typography
-              const Text(
-                'Lights Attendance',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w300,
-                  color: Colors.white,
-                  letterSpacing: 2.0,
-                  height: 1.2,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Management System',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w200,
-                  color: Colors.white70,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              const SizedBox(height: 60),
-              // Modern loading indicator
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.1),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white.withOpacity(0.7),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    const Text(
-                      'Initializing...',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w300,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
+                width: 150,
+                height: 150,
+                child: Lottie.asset(
+                  'assets/Sandy Loading.json',
+                  fit: BoxFit.contain,
+                  repeat: true,
                 ),
               ),
               const SizedBox(height: 40),
-              // Minimalist dots indicator
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildDot(true),
-                  const SizedBox(width: 8),
-                  _buildDot(false),
-                  const SizedBox(width: 8),
-                  _buildDot(false),
-                ],
+              // Loading text
+              const Text(
+                'Loading...',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w300,
+                  color: Colors.black87,
+                  letterSpacing: 2.0,
+                ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildDot(bool active) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
-      width: active ? 12 : 6,
-      height: 6,
-      decoration: BoxDecoration(
-        color: active ? Colors.white : Colors.white.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(3),
       ),
     );
   }

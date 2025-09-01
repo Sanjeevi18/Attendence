@@ -6,6 +6,7 @@ import '../../controllers/attendance_controller.dart';
 import '../../services/firebase_service.dart';
 import '../../models/user_model.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/snackbar_utils.dart';
 
 class EmployeeManagementScreen extends StatefulWidget {
   const EmployeeManagementScreen({super.key});
@@ -66,7 +67,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         await _loadEmployeeDutyStatus();
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to load employees: ${e.toString()}');
+      SnackbarUtils.showError('Failed to load employees: ${e.toString()}');
     } finally {
       setState(() => isLoading = false);
     }
@@ -121,8 +122,11 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showCreateEmployeeDialog,
-        backgroundColor: Colors.black,
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
+        backgroundColor: AppTheme.primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Icon(Icons.person_add, size: 28),
       ),
     );
   }
@@ -166,196 +170,227 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
   Widget _buildEmployeeCard(User employee) {
     final isOnDuty = employeeDutyStatus[employee.id] ?? false;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            spreadRadius: 0,
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: InkWell(
         onTap: () => _navigateToEmployeeDetails(employee),
-        borderRadius: BorderRadius.circular(8),
-        child: ListTile(
-          contentPadding: const EdgeInsets.all(16),
-          leading: CircleAvatar(
-            backgroundColor: employee.role == 'admin'
-                ? Colors.black54
-                : Colors.black,
-            radius: 25,
-            child: Text(
-              employee.name.substring(0, 1).toUpperCase(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          title: Row(
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
             children: [
-              Expanded(
-                child: Text(
-                  employee.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
-                  color: employee.role == 'admin'
-                      ? Colors.black54.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: employee.role == 'admin'
-                        ? Colors.black54
-                        : Colors.black,
-                    width: 1,
+                  gradient: LinearGradient(
+                    colors: employee.role == 'admin'
+                        ? [Colors.red.shade400, Colors.red.shade600]
+                        : [Colors.blue.shade400, Colors.blue.shade600],
                   ),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Text(
-                  employee.role.toUpperCase(),
-                  style: TextStyle(
-                    color: employee.role == 'admin'
-                        ? Colors.black54
-                        : Colors.black,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
+                child: Center(
+                  child: Text(
+                    employee.name.substring(0, 1).toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 4),
-              Text(
-                employee.email,
-                style: TextStyle(color: Colors.grey[600], fontSize: 14),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: isOnDuty ? Colors.green : Colors.grey,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    isOnDuty ? 'On Duty' : 'Off Duty',
-                    style: TextStyle(
-                      color: isOnDuty ? Colors.black87 : Colors.grey,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  if (isOnDuty) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.black.withOpacity(0.3),
-                        ),
-                      ),
-                      child: const Text(
-                        'ACTIVE',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              if (employee.department != null ||
-                  employee.designation != null) ...[
-                const SizedBox(height: 4),
-                Row(
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (employee.department != null) ...[
-                      Icon(Icons.business, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        employee.department!,
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            employee.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: employee.role == 'admin'
+                                ? Colors.black54.withOpacity(0.1)
+                                : Colors.black.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: employee.role == 'admin'
+                                  ? Colors.black54
+                                  : Colors.black,
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            employee.role.toUpperCase(),
+                            style: TextStyle(
+                              color: employee.role == 'admin'
+                                  ? Colors.black54
+                                  : Colors.black,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      employee.email,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: isOnDuty ? Colors.green : Colors.grey,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isOnDuty ? 'On Duty' : 'Off Duty',
+                          style: TextStyle(
+                            color: isOnDuty ? Colors.black87 : Colors.grey,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        if (isOnDuty) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.black.withOpacity(0.3),
+                              ),
+                            ),
+                            child: const Text(
+                              'ACTIVE',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (employee.department != null ||
+                        employee.designation != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (employee.department != null) ...[
+                            Icon(
+                              Icons.business,
+                              size: 14,
+                              color: Colors.grey[600],
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              employee.department!,
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                          if (employee.department != null &&
+                              employee.designation != null)
+                            Text(
+                              ' • ',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                          if (employee.designation != null) ...[
+                            Icon(Icons.work, size: 14, color: Colors.grey[600]),
+                            const SizedBox(width: 4),
+                            Text(
+                              employee.designation!,
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
-                    if (employee.department != null &&
-                        employee.designation != null)
-                      Text(
-                        ' • ',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
-                    if (employee.designation != null) ...[
-                      Icon(Icons.work, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        employee.designation!,
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-              // Location info
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.location_on, size: 14, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
+                    const SizedBox(height: 8),
+                    Text(
                       _getLocationText(employee.id),
                       style: TextStyle(color: Colors.grey[600], fontSize: 12),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                  ],
+                ),
+              ),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: isOnDuty ? Colors.green : Colors.grey,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () => _confirmRemoveEmployee(employee),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.red,
+                        size: 18,
+                      ),
+                    ),
                   ),
                 ],
-              ),
-            ],
-          ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Status indicator
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: isOnDuty ? Colors.green : Colors.grey,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(height: 8),
-              // Remove button
-              InkWell(
-                onTap: () => _confirmRemoveEmployee(employee),
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.red,
-                    size: 18,
-                  ),
-                ),
               ),
             ],
           ),
@@ -413,13 +448,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       await attendanceController.removeEmployee(employee.id);
       await _loadEmployees(); // Refresh the list
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to remove employee: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      SnackbarUtils.showBottomError('Failed to remove employee: $e');
     }
   }
 
@@ -446,22 +475,34 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
           elevation: 24,
           shadowColor: Colors.black.withOpacity(0.3),
           child: Container(
-            width: MediaQuery.of(context).size.width * 0.9,
-            constraints: const BoxConstraints(maxWidth: 520),
-            padding: const EdgeInsets.all(28),
+            width: MediaQuery.of(context).size.width,
+            height: MediaQuery.of(context).size.height * 0.85,
+            padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(28),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [Colors.white, Colors.grey.shade50],
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  spreadRadius: 0,
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
             child: SingleChildScrollView(
               child: Form(
@@ -474,26 +515,26 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                AppTheme.primaryColor.withOpacity(0.1),
-                                AppTheme.primaryColor.withOpacity(0.05),
+                                AppTheme.primaryColor.withOpacity(0.12),
+                                AppTheme.primaryColor.withOpacity(0.06),
                               ],
                             ),
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(18),
                             border: Border.all(
                               color: AppTheme.primaryColor.withOpacity(0.2),
                             ),
                           ),
                           child: Icon(
-                            Icons.person_add_rounded,
+                            Icons.person_add,
+                            size: 36,
                             color: AppTheme.primaryColor,
-                            size: 32,
                           ),
                         ),
-                        const SizedBox(width: 20),
+                        const SizedBox(width: 24),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -501,17 +542,17 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                               Text(
                                 'Add New Employee',
                                 style: TextStyle(
-                                  fontSize: 26,
+                                  fontSize: 28,
                                   fontWeight: FontWeight.bold,
                                   color: AppTheme.primaryColor,
-                                  letterSpacing: -0.5,
+                                  letterSpacing: -0.7,
                                 ),
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 4),
                               Text(
                                 'Create account for $companyName',
                                 style: TextStyle(
-                                  fontSize: 15,
+                                  fontSize: 16,
                                   color: Colors.grey[600],
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -522,7 +563,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                         Container(
                           decoration: BoxDecoration(
                             color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                           child: IconButton(
                             onPressed: () => Navigator.of(context).pop(),
@@ -530,12 +571,13 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                             style: IconButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               foregroundColor: Colors.grey[600],
+                              padding: const EdgeInsets.all(12),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 36),
 
                     // Company Name Display
                     Container(
@@ -588,7 +630,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 28),
 
                     // Full Name Field
                     _buildModernTextField(
@@ -607,7 +649,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
 
                     // Email Field
                     _buildModernTextField(
@@ -627,34 +669,50 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
 
                     // Role Selection
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade200),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.08),
+                            spreadRadius: 1,
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              Icon(
-                                Icons.admin_panel_settings,
-                                color: AppTheme.primaryColor,
-                                size: 20,
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.admin_panel_settings_rounded,
+                                  color: AppTheme.primaryColor,
+                                  size: 22,
+                                ),
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 14),
                               Text(
                                 'Role Selection',
                                 style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                   color: AppTheme.primaryColor,
+                                  letterSpacing: -0.3,
                                 ),
                               ),
                               const Text(
@@ -662,30 +720,31 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                                 style: TextStyle(
                                   color: Colors.red,
                                   fontWeight: FontWeight.bold,
+                                  fontSize: 18,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 20),
                           Row(
                             children: [
                               Expanded(
                                 child: _buildRoleCard(
                                   'Employee',
                                   'Standard user with basic access',
-                                  Icons.person,
+                                  Icons.person_rounded,
                                   Colors.blue,
                                   selectedRole == 'employee',
                                   () =>
                                       setState(() => selectedRole = 'employee'),
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 16),
                               Expanded(
                                 child: _buildRoleCard(
                                   'Admin',
                                   'Full access with management rights',
-                                  Icons.admin_panel_settings,
+                                  Icons.admin_panel_settings_rounded,
                                   Colors.red,
                                   selectedRole == 'admin',
                                   () => setState(() => selectedRole = 'admin'),
@@ -696,7 +755,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
 
                     // Password Field
                     _buildModernTextField(
@@ -840,10 +899,10 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: isSelected ? color.withOpacity(0.08) : Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: isSelected ? color : Colors.grey.shade300,
             width: isSelected ? 2.5 : 1.5,
@@ -853,46 +912,37 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
                   BoxShadow(
                     color: color.withOpacity(0.15),
                     spreadRadius: 1,
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
                   ),
                 ]
               : null,
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? color.withOpacity(0.1)
+                    ? color.withOpacity(0.12)
                     : Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(
                 icon,
                 color: isSelected ? color : Colors.grey[600],
-                size: 28,
+                size: 32,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Text(
               title,
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: isSelected ? color : Colors.grey[700],
-                letterSpacing: -0.2,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              description,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: isSelected ? color.withOpacity(0.7) : Colors.grey[500],
-                fontWeight: FontWeight.w500,
+                letterSpacing: -0.3,
               ),
             ),
           ],
@@ -1044,13 +1094,8 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         _loadEmployees();
 
         // Show success message
-        Get.snackbar(
-          'Success',
+        SnackbarUtils.showSuccess(
           'Employee $name has been created successfully!',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          icon: const Icon(Icons.check_circle, color: Colors.white),
-          duration: const Duration(seconds: 3),
         );
       }
     } catch (e) {
@@ -1059,14 +1104,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
         Get.back();
       }
 
-      Get.snackbar(
-        'Error',
-        'Failed to create employee: ${e.toString()}',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-        icon: const Icon(Icons.error, color: Colors.white),
-        duration: const Duration(seconds: 4),
-      );
+      SnackbarUtils.showError('Failed to create employee: ${e.toString()}');
     }
   }
 }

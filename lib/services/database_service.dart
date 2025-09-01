@@ -8,7 +8,8 @@ import '../models/company_model.dart';
 class DatabaseService {
   static Database? _database;
   static const String _databaseName = 'attendance_management.db';
-  static const int _databaseVersion = 1;
+  static const int _databaseVersion =
+      2; // Updated version for markedAsLeave column
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -22,6 +23,7 @@ class DatabaseService {
       path,
       version: _databaseVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -86,6 +88,7 @@ class DatabaseService {
         date INTEGER NOT NULL,
         type TEXT NOT NULL,
         isRecurring INTEGER NOT NULL DEFAULT 0,
+        markedAsLeave INTEGER NOT NULL DEFAULT 0,
         createdAt INTEGER NOT NULL,
         createdBy TEXT NOT NULL,
         FOREIGN KEY (companyId) REFERENCES companies (id),
@@ -101,6 +104,16 @@ class DatabaseService {
       'CREATE INDEX idx_holidays_company ON holidays (companyId)',
     );
     await db.execute('CREATE INDEX idx_holidays_date ON holidays (date)');
+  }
+
+  // Handle database upgrades
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add markedAsLeave column to holidays table
+      await db.execute(
+        'ALTER TABLE holidays ADD COLUMN markedAsLeave INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   // Holiday CRUD Operations
@@ -175,6 +188,23 @@ class DatabaseService {
   Future<void> deleteHoliday(String holidayId) async {
     final db = await database;
     await db.delete('holidays', where: 'id = ?', whereArgs: [holidayId]);
+  }
+
+  // Mark or unmark holiday as leave day
+  Future<bool> markHolidayAsLeave(String holidayId, bool markedAsLeave) async {
+    try {
+      final db = await database;
+      await db.update(
+        'holidays',
+        {'markedAsLeave': markedAsLeave ? 1 : 0},
+        where: 'id = ?',
+        whereArgs: [holidayId],
+      );
+      return true;
+    } catch (e) {
+      print('Error marking holiday as leave: $e');
+      return false;
+    }
   }
 
   // Check if a date is a holiday

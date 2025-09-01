@@ -76,6 +76,7 @@ class HolidayController extends GetxController {
     required DateTime date,
     String type = 'Company',
     bool isRecurring = false,
+    bool markedAsLeave = false,
   }) async {
     try {
       isLoading.value = true;
@@ -104,6 +105,7 @@ class HolidayController extends GetxController {
         date: date,
         type: type,
         isRecurring: isRecurring,
+        markedAsLeave: markedAsLeave,
         createdAt: DateTime.now(),
         createdBy: currentUser.id,
       );
@@ -254,5 +256,125 @@ class HolidayController extends GetxController {
   // Refresh holidays
   Future<void> refreshHolidays() async {
     await loadHolidays();
+  }
+
+  // Mark holiday as leave day (Admin only)
+  Future<bool> markHolidayAsLeave(String holidayId) async {
+    try {
+      isLoading.value = true;
+      error.value = '';
+
+      final currentUser = _authController.currentUser.value;
+      if (currentUser == null || !currentUser.isAdmin) {
+        throw Exception('Only administrators can mark holidays as leave');
+      }
+
+      final success = await _databaseService.markHolidayAsLeave(
+        holidayId,
+        true,
+      );
+
+      if (success) {
+        // Update local holiday list
+        final holidayIndex = holidays.indexWhere((h) => h.id == holidayId);
+        if (holidayIndex != -1) {
+          holidays[holidayIndex] = holidays[holidayIndex].copyWith(
+            markedAsLeave: true,
+          );
+          holidays.refresh();
+        }
+
+        // Update holiday events for calendar
+        await _updateHolidayEvents();
+
+        // Notify all employees about the leave day
+        await _notifyEmployeesAboutLeaveUpdate(holidayId, true);
+      }
+
+      return success;
+    } catch (e) {
+      error.value = e.toString();
+      Get.snackbar('Error', 'Failed to mark holiday as leave: ${e.toString()}');
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Unmark holiday as leave day (Admin only)
+  Future<bool> unmarkHolidayAsLeave(String holidayId) async {
+    try {
+      isLoading.value = true;
+      error.value = '';
+
+      final currentUser = _authController.currentUser.value;
+      if (currentUser == null || !currentUser.isAdmin) {
+        throw Exception('Only administrators can unmark holidays as leave');
+      }
+
+      final success = await _databaseService.markHolidayAsLeave(
+        holidayId,
+        false,
+      );
+
+      if (success) {
+        // Update local holiday list
+        final holidayIndex = holidays.indexWhere((h) => h.id == holidayId);
+        if (holidayIndex != -1) {
+          holidays[holidayIndex] = holidays[holidayIndex].copyWith(
+            markedAsLeave: false,
+          );
+          holidays.refresh();
+        }
+
+        // Update holiday events for calendar
+        await _updateHolidayEvents();
+
+        // Notify all employees about the change
+        await _notifyEmployeesAboutLeaveUpdate(holidayId, false);
+      }
+
+      return success;
+    } catch (e) {
+      error.value = e.toString();
+      Get.snackbar(
+        'Error',
+        'Failed to unmark holiday as leave: ${e.toString()}',
+      );
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Notify all employees about leave day updates
+  Future<void> _notifyEmployeesAboutLeaveUpdate(
+    String holidayId,
+    bool markedAsLeave,
+  ) async {
+    try {
+      final companyId = _authController.currentUser.value?.companyId;
+      if (companyId == null) return;
+
+      final holiday = holidays.firstWhere((h) => h.id == holidayId);
+
+      // Here you could implement push notifications or in-app notifications
+      // For now, we'll just log the action
+      print(
+        'Holiday "${holiday.title}" ${markedAsLeave ? 'marked as leave' : 'leave mark removed'} for company $companyId',
+      );
+
+      // You could also update a notifications collection in Firestore
+      // await _databaseService.createNotificationForAllEmployees(
+      //   companyId: companyId,
+      //   title: markedAsLeave ? 'Holiday Marked as Leave' : 'Holiday Leave Mark Removed',
+      //   message: markedAsLeave
+      //     ? 'Holiday "${holiday.title}" has been marked as a leave day'
+      //     : 'Holiday "${holiday.title}" is no longer marked as a leave day',
+      //   type: 'holiday_update',
+      // );
+    } catch (e) {
+      print('Error notifying employees: $e');
+    }
   }
 }

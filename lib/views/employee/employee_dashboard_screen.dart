@@ -47,7 +47,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
   }
 
   Future<void> _setupLocationTracking() async {
-    final locationController = Get.put(LocationController());
+    final locationController = Get.find<LocationController>();
 
     // Request permissions first
     await _requestLocationPermissions();
@@ -1022,7 +1022,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
   Widget _buildCalendarTab() {
     return const Padding(
       padding: EdgeInsets.all(16),
-      child: const ComprehensiveAttendanceCalendarWidget(),
+      child: ComprehensiveAttendanceCalendarWidget(),
     );
   }
 
@@ -1573,7 +1573,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
 
     try {
       await leaveController.submitLeaveRequest(
-        leaveType: leaveController.selectedLeaveType.value!.name,
+        leaveType: leaveController.selectedLeaveType.value!.displayName,
         fromDate: leaveController.fromDate.value!,
         toDate: leaveController.toDate.value!,
         reason: leaveController.reasonController.text.trim(),

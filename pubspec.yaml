@@ -40,5 +40,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
-    - assets/icons/
-    - assets/loading.json
+    - assets/images/icons/
+    - assets/Sandy Loading.json
+    - assets/Book a meeting icon animation.json

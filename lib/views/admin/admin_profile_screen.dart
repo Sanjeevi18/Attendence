@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 import '../../controllers/auth_controller.dart';
+import '../../controllers/attendance_controller.dart';
 import '../../models/user_model.dart';
 import '../../theme/app_theme.dart';
 
@@ -14,7 +18,13 @@ class AdminProfileScreen extends StatefulWidget {
 
 class _AdminProfileScreenState extends State<AdminProfileScreen> {
   final AuthController authController = Get.find<AuthController>();
+  final AttendanceController attendanceController = Get.put(
+    AttendanceController(),
+  );
   bool isEditing = false;
+  File? _selectedImage;
+  bool _isUploadingImage = false;
+  final ImagePicker _imagePicker = ImagePicker();
 
   // Controllers for editing
   final _nameController = TextEditingController();
@@ -131,6 +141,8 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
             children: [
               _buildProfileHeader(user),
               const SizedBox(height: 20),
+              _buildAdminStats(),
+              const SizedBox(height: 20),
               _buildBasicInformation(),
               const SizedBox(height: 20),
               _buildPersonalDetails(),
@@ -173,7 +185,9 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
               CircleAvatar(
                 radius: 60,
                 backgroundColor: Colors.white,
-                child: user.profileImage != null
+                child: _isUploadingImage
+                    ? const CircularProgressIndicator()
+                    : user.profileImage != null
                     ? ClipOval(
                         child: Image.network(
                           user.profileImage!,
@@ -238,6 +252,135 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
           Text(
             authController.currentCompany.value?.name ?? 'Company',
             style: const TextStyle(color: Colors.white70, fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdminStats() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: AppTheme.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.analytics,
+                  color: AppTheme.primaryColor,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Admin Dashboard Overview',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Obx(() {
+            return Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Total Employees',
+                    '${attendanceController.totalEmployees.value}',
+                    Icons.people,
+                    Colors.blue,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    'Present Today',
+                    '${attendanceController.presentToday.value}',
+                    Icons.check_circle,
+                    Colors.green,
+                  ),
+                ),
+              ],
+            );
+          }),
+          const SizedBox(height: 12),
+          Obx(() {
+            return Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'On Leave',
+                    '${attendanceController.onLeaveToday.value}',
+                    Icons.beach_access,
+                    Colors.orange,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildStatCard(
+                    'Absent Today',
+                    '${attendanceController.absentToday.value}',
+                    Icons.cancel,
+                    Colors.red,
+                  ),
+                ),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              color: color.withOpacity(0.8),
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -484,7 +627,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: DropdownButtonFormField<String>(
-        value: selectedBloodGroup,
+        initialValue: selectedBloodGroup,
         decoration: InputDecoration(
           labelText: 'Blood Group',
           prefixIcon: Icon(
@@ -617,8 +760,79 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     );
   }
 
-  void _changeProfilePicture() {
-    Get.snackbar('Info', 'Profile picture change feature coming soon!');
+  void _changeProfilePicture() async {
+    try {
+      final ImageSource? source = await showDialog<ImageSource>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Select Image Source'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Camera'),
+                onTap: () => Navigator.of(context).pop(ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Gallery'),
+                onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (source != null) {
+        final XFile? image = await _imagePicker.pickImage(
+          source: source,
+          maxWidth: 512,
+          maxHeight: 512,
+          imageQuality: 70,
+        );
+
+        if (image != null) {
+          setState(() {
+            _selectedImage = File(image.path);
+            _isUploadingImage = true;
+          });
+
+          // Upload to Firebase Storage
+          final storageRef = FirebaseStorage.instance
+              .ref()
+              .child('profile_images')
+              .child('${authController.currentUser.value!.id}.jpg');
+
+          await storageRef.putFile(_selectedImage!);
+          final downloadUrl = await storageRef.getDownloadURL();
+
+          // Update user profile with new image URL
+          await authController.updateUserProfileImage(downloadUrl);
+
+          setState(() {
+            _isUploadingImage = false;
+          });
+
+          Get.snackbar(
+            'Success',
+            'Profile picture updated successfully!',
+            backgroundColor: Colors.green,
+            colorText: Colors.white,
+          );
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _isUploadingImage = false;
+      });
+      Get.snackbar(
+        'Error',
+        'Failed to update profile picture: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    }
   }
 
   void _saveProfile() {
