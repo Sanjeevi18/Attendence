@@ -11,6 +11,7 @@ import '../../controllers/leave_request_controller.dart';
 import '../../models/leave_request_model.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/comprehensive_attendance_calendar_widget.dart';
+import '../../utils/snackbar_utils.dart';
 import 'employee_profile_screen.dart';
 
 class EmployeeDashboardScreen extends StatefulWidget {
@@ -76,11 +77,9 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       // Location services are not enabled
-      Get.snackbar(
-        'Location Services',
+      SnackbarUtils.showWarning(
         'Please enable location services to use this feature',
-        backgroundColor: Colors.black54,
-        colorText: Colors.white,
+        title: 'Location Services',
       );
       return;
     }
@@ -89,22 +88,18 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        Get.snackbar(
-          'Permission Denied',
+        SnackbarUtils.showError(
           'Location permissions are required for attendance tracking',
-          backgroundColor: Colors.black54,
-          colorText: Colors.white,
+          title: 'Permission Denied',
         );
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      Get.snackbar(
-        'Permission Denied Forever',
+      SnackbarUtils.showError(
         'Please enable location permissions in settings',
-        backgroundColor: Colors.black54,
-        colorText: Colors.white,
+        title: 'Permission Denied Forever',
       );
       return;
     }
@@ -268,6 +263,13 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
           setState(() {
             _selectedIndex = index;
           });
+          // Force refresh calendar when calendar tab is selected
+          if (index == 1) {
+            // Calendar tab selected, trigger a rebuild
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (mounted) setState(() {});
+            });
+          }
         },
         items: const [
           BottomNavigationBarItem(
@@ -1020,9 +1022,11 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen>
   }
 
   Widget _buildCalendarTab() {
-    return const Padding(
-      padding: EdgeInsets.all(16),
-      child: ComprehensiveAttendanceCalendarWidget(),
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: ComprehensiveAttendanceCalendarWidget(
+        key: ValueKey('calendar_${DateTime.now().month}'),
+      ),
     );
   }
 

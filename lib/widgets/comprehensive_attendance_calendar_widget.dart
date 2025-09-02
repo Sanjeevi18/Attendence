@@ -7,6 +7,7 @@ import '../controllers/attendance_controller.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/holiday_controller.dart';
 import '../models/user_model.dart';
+import '../models/holiday_model.dart';
 
 class ComprehensiveAttendanceCalendarWidget extends StatefulWidget {
   final User? employee; // Optional employee parameter for admin view
@@ -36,8 +37,11 @@ class _ComprehensiveAttendanceCalendarWidgetState
   void initState() {
     super.initState();
     _selectedDay = DateTime.now();
-    _loadAttendanceData();
-    _loadSelectedDayData();
+    // Load holidays first, then attendance data
+    holidayController.loadHolidays().then((_) {
+      _loadAttendanceData();
+      _loadSelectedDayData();
+    });
   }
 
   Future<void> _loadAttendanceData() async {
@@ -113,7 +117,6 @@ class _ComprehensiveAttendanceCalendarWidgetState
       final endDateStr = DateFormat('yyyy-MM-dd').format(endDate);
 
       // Fetch attendance records for the date range
-      // Using a simpler query to avoid index requirement temporarily
       final attendanceQuery = await _firestore
           .collection('attendance')
           .where('userId', isEqualTo: employeeId)
@@ -171,6 +174,45 @@ class _ComprehensiveAttendanceCalendarWidgetState
           'checkInLocation': data['checkInLocation'],
           'checkOutLocation': data['checkOutLocation'],
         };
+      }
+
+      // Check for holidays and mark them as leave for employees
+      final holidays = holidayController.holidays
+          .where(
+            (holiday) =>
+                holiday.date.isAfter(
+                  startDate.subtract(const Duration(days: 1)),
+                ) &&
+                holiday.date.isBefore(endDate.add(const Duration(days: 1))),
+          )
+          .toList();
+
+      for (final holiday in holidays) {
+        final dateStr = DateFormat('yyyy-MM-dd').format(holiday.date);
+        // If no attendance record exists for a holiday, mark it as leave
+        if (!attendanceMap.containsKey(dateStr)) {
+          attendanceMap[dateStr] = {
+            'status': 'leave',
+            'isOnDuty': false,
+            'dutyStartTime': null,
+            'dutyEndTime': null,
+            'checkInTime': null,
+            'checkOutTime': null,
+            'totalDuration': 'Holiday',
+            'checkInAddress': 'Holiday: ${holiday.title}',
+            'checkOutAddress': null,
+            'checkInLocation': null,
+            'checkOutLocation': null,
+            'holidayTitle': holiday.title,
+            'holidayDescription': holiday.description,
+            'isHoliday': true,
+          };
+        } else {
+          // If attendance exists but it's a holiday, add holiday info
+          attendanceMap[dateStr]!['holidayTitle'] = holiday.title;
+          attendanceMap[dateStr]!['holidayDescription'] = holiday.description;
+          attendanceMap[dateStr]!['isHoliday'] = true;
+        }
       }
 
       return attendanceMap;
@@ -276,11 +318,14 @@ class _ComprehensiveAttendanceCalendarWidgetState
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'present':
-        return Colors.black87;
+        return Colors.green;
       case 'leave':
-        return Colors.black54;
+        return Colors.red; // Changed to red as requested
+      case 'wfh':
+      case 'work from home':
+        return Colors.orange;
       case 'absent':
-        return Colors.black38;
+        return Colors.red;
       default:
         return Colors.grey;
     }
@@ -292,6 +337,9 @@ class _ComprehensiveAttendanceCalendarWidgetState
         return Icons.check_circle;
       case 'leave':
         return Icons.event_busy;
+      case 'wfh':
+      case 'work from home':
+        return Icons.home_work;
       case 'absent':
         return Icons.cancel;
       default:
@@ -357,6 +405,8 @@ class _ComprehensiveAttendanceCalendarWidgetState
               },
               calendarFormat: CalendarFormat.month,
               startingDayOfWeek: StartingDayOfWeek.monday,
+              // Only treat Sunday as weekend, not Saturday
+              weekendDays: const [DateTime.sunday],
               headerStyle: const HeaderStyle(
                 formatButtonVisible: false,
                 titleCentered: true,
@@ -372,6 +422,9 @@ class _ComprehensiveAttendanceCalendarWidgetState
                   color: Colors.black,
                   shape: BoxShape.circle,
                 ),
+                // Only make Sundays red (not Saturdays)
+                weekendTextStyle: TextStyle(color: Colors.red),
+                holidayTextStyle: TextStyle(color: Colors.red),
               ),
               onDaySelected: (selectedDay, focusedDay) {
                 setState(() {
@@ -454,6 +507,12 @@ class _ComprehensiveAttendanceCalendarWidgetState
 
             // Selected Day Details
             if (_selectedDay != null) _buildSelectedDayDetails(),
+
+            // Holiday Management Section for Admin
+            if (authController.currentUser.value?.isAdmin == true) ...[
+              const SizedBox(height: 16),
+              _buildHolidayManagementSection(),
+            ],
           ],
         ),
       ),
@@ -472,8 +531,12 @@ class _ComprehensiveAttendanceCalendarWidgetState
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _buildLegendItem('Present', Colors.green, Icons.check_circle),
-          _buildLegendItem('Leave', Colors.blue, Icons.event_busy),
-          _buildLegendItem('Absent', Colors.red, Icons.cancel),
+          _buildLegendItem(
+            'Leave',
+            Colors.red,
+            Icons.event_busy,
+          ), // Changed to red
+          _buildLegendItem('WFH', Colors.orange, Icons.home_work),
         ],
       ),
     );
@@ -727,6 +790,55 @@ class _ComprehensiveAttendanceCalendarWidgetState
                 ],
               ),
             ],
+
+            // Holiday Information
+            if (_selectedDayData!['isHoliday'] == true) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.event,
+                          size: 16,
+                          color: Colors.orange.withOpacity(0.8),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Holiday: ${_selectedDayData!['holidayTitle'] ?? 'Company Holiday'}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.orange.withOpacity(0.9),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_selectedDayData!['holidayDescription'] != null &&
+                        _selectedDayData!['holidayDescription']!
+                            .isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        _selectedDayData!['holidayDescription']!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange.withOpacity(0.7),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ],
         ],
       ),
@@ -748,6 +860,350 @@ class _ComprehensiveAttendanceCalendarWidgetState
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildHolidayManagementSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.event, color: Colors.orange),
+              const SizedBox(width: 8),
+              const Text(
+                'Company Holidays',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: () => _showAddHolidayDialog(),
+                icon: const Icon(Icons.add_circle, color: Colors.orange),
+                tooltip: 'Add Holiday',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Obx(() {
+            final holidays = holidayController.holidays
+                .where(
+                  (holiday) =>
+                      holiday.date.month == _focusedDay.month &&
+                      holiday.date.year == _focusedDay.year,
+                )
+                .toList();
+
+            if (holidays.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.all(8.0),
+                child: Text(
+                  'No holidays declared for this month',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              );
+            }
+
+            return Column(
+              children: holidays
+                  .map((holiday) => _buildHolidayItem(holiday))
+                  .toList(),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHolidayItem(dynamic holiday) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              DateFormat('MMM dd').format(holiday.date),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.orange,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  holiday.title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (holiday.description.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    holiday.description,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          PopupMenuButton(
+            onSelected: (value) {
+              if (value == 'edit') {
+                _showEditHolidayDialog(holiday);
+              } else if (value == 'delete') {
+                _deleteHoliday(holiday);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'edit', child: Text('Edit')),
+              const PopupMenuItem(value: 'delete', child: Text('Delete')),
+            ],
+            child: const Icon(Icons.more_vert, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddHolidayDialog() {
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+    DateTime selectedDate = _selectedDay ?? DateTime.now();
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Add Holiday'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Holiday Title *',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descriptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Description (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  title: Text(
+                    'Date: ${DateFormat('MMM dd, yyyy').format(selectedDate)}',
+                  ),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (date != null) {
+                      setState(() => selectedDate = date);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (titleController.text.trim().isEmpty) {
+                  Get.snackbar('Error', 'Please enter a holiday title');
+                  return;
+                }
+
+                try {
+                  await holidayController.addHoliday(
+                    title: titleController.text.trim(),
+                    description: descriptionController.text.trim(),
+                    date: selectedDate,
+                  );
+                  Navigator.pop(context);
+                  Get.snackbar('Success', 'Holiday added successfully');
+                  _loadAttendanceData(); // Refresh calendar
+                } catch (e) {
+                  Get.snackbar('Error', 'Failed to add holiday: $e');
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditHolidayDialog(dynamic holiday) {
+    final titleController = TextEditingController(text: holiday.title);
+    final descriptionController = TextEditingController(
+      text: holiday.description,
+    );
+    DateTime selectedDate = holiday.date;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Edit Holiday'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Holiday Title *',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descriptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Description (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  title: Text(
+                    'Date: ${DateFormat('MMM dd, yyyy').format(selectedDate)}',
+                  ),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now().subtract(
+                        const Duration(days: 30),
+                      ),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (date != null) {
+                      setState(() => selectedDate = date);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (titleController.text.trim().isEmpty) {
+                  Get.snackbar('Error', 'Please enter a holiday title');
+                  return;
+                }
+
+                try {
+                  // Create updated holiday object
+                  final updatedHoliday = Holiday(
+                    id: holiday.id,
+                    companyId: holiday.companyId,
+                    title: titleController.text.trim(),
+                    description: descriptionController.text.trim(),
+                    date: selectedDate,
+                    type: holiday.type,
+                    isRecurring: holiday.isRecurring,
+                    markedAsLeave: holiday.markedAsLeave,
+                    createdAt: holiday.createdAt,
+                    createdBy: holiday.createdBy,
+                  );
+
+                  await holidayController.updateHoliday(updatedHoliday);
+                  Navigator.pop(context);
+                  Get.snackbar('Success', 'Holiday updated successfully');
+                  _loadAttendanceData(); // Refresh calendar
+                } catch (e) {
+                  Get.snackbar('Error', 'Failed to update holiday: $e');
+                }
+              },
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _deleteHoliday(dynamic holiday) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Holiday'),
+        content: Text('Are you sure you want to delete "${holiday.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await holidayController.deleteHoliday(holiday.id);
+                Navigator.pop(context);
+                Get.snackbar('Success', 'Holiday deleted successfully');
+                _loadAttendanceData(); // Refresh calendar
+              } catch (e) {
+                Get.snackbar('Error', 'Failed to delete holiday: $e');
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 }

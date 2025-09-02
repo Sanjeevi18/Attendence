@@ -187,14 +187,28 @@ class FirebaseService {
 
   static Future<List<User>> getUsersByCompany(String companyId) async {
     try {
+      print('🔍 Querying users for companyId: $companyId');
+
       QuerySnapshot query = await _firestore
           .collection(_usersCollection)
           .where('companyId', isEqualTo: companyId)
           .where('isActive', isEqualTo: true)
           .get();
 
-      return query.docs.map((doc) => User.fromFirestore(doc)).toList();
+      print('📊 Firebase query returned ${query.docs.length} documents');
+
+      final users = query.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        print(
+          '👤 Document ${doc.id}: ${data['name']} (${data['email']}) - companyId: ${data['companyId']}, isActive: ${data['isActive']}',
+        );
+        return User.fromFirestore(doc);
+      }).toList();
+
+      print('✅ Returning ${users.length} users');
+      return users;
     } catch (e) {
+      print('❌ Error in getUsersByCompany: $e');
       throw Exception('Failed to get company users: ${e.toString()}');
     }
   }

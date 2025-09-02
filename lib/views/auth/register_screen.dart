@@ -14,6 +14,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final AuthController authController = Get.find<AuthController>();
   final _formKey = GlobalKey<FormState>();
   final _companyNameController = TextEditingController();
+  final _adminNameController = TextEditingController();
   final _adminEmailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -23,6 +24,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     _companyNameController.dispose();
+    _adminNameController.dispose();
     _adminEmailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -150,6 +152,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 }
                 if (value.length < 2) {
                   return 'Company name must be at least 2 characters';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Admin Name Field
+            TextFormField(
+              controller: _adminNameController,
+              decoration: InputDecoration(
+                labelText: 'Admin Name',
+                prefixIcon: const Icon(Icons.person),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppTheme.primaryColor),
+                ),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter admin name';
+                }
+                if (value.trim().length < 2) {
+                  return 'Name must be at least 2 characters';
                 }
                 return null;
               },
@@ -317,14 +345,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _handleRegister() async {
     if (_formKey.currentState!.validate()) {
       try {
-        // For now, just show a message since we need to implement the register functionality
-        Get.snackbar(
-          'Registration',
-          'Company registration functionality will be implemented with Firebase storage under company name structure',
-          backgroundColor: AppTheme.accentColor,
-          colorText: AppTheme.primaryColor,
-          duration: const Duration(seconds: 4),
+        final authController = Get.find<AuthController>();
+
+        final success = await authController.registerCompanyAdmin(
+          name: _adminNameController.text.trim(),
+          email: _adminEmailController.text.trim(),
+          password: _passwordController.text,
+          companyName: _companyNameController.text.trim(),
         );
+
+        if (success) {
+          // Navigate to admin dashboard after successful registration
+          Get.offAllNamed('/admin');
+        }
       } catch (e) {
         Get.snackbar(
           'Registration Failed',

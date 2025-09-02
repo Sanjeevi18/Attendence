@@ -233,7 +233,7 @@ class AttendanceStatisticsWidget extends StatelessWidget {
       ),
       // On Leave
       PieChartSectionData(
-        color: const Color(0xFFFF9800), // Material Orange 500
+        color: const Color(0xFFF44336), // Material Red 500 - changed to red
         value: (stats['leave']! / total * 100),
         title: '${(stats['leave']! / total * 100).toStringAsFixed(1)}%',
         radius: 40,
@@ -245,7 +245,9 @@ class AttendanceStatisticsWidget extends StatelessWidget {
       ),
       // Absent
       PieChartSectionData(
-        color: const Color(0xFFF44336), // Material Red 500
+        color: const Color(
+          0xFF795548,
+        ), // Material Brown 500 - changed from red to brown since leave is now red
         value: (stats['absent']! / total * 100),
         title: '${(stats['absent']! / total * 100).toStringAsFixed(1)}%',
         radius: 40,
@@ -285,12 +287,12 @@ class AttendanceStatisticsWidget extends StatelessWidget {
       },
       {
         'label': 'On Leave',
-        'color': const Color(0xFFFF9800),
+        'color': const Color(0xFFF44336), // Red
         'value': stats['leave']!,
       },
       {
         'label': 'Absent',
-        'color': const Color(0xFFF44336),
+        'color': const Color(0xFF795548), // Brown
         'value': stats['absent']!,
       },
       {
@@ -362,14 +364,14 @@ class AttendanceStatisticsWidget extends StatelessWidget {
         'title': 'On Leave',
         'value': '${stats['leave']}',
         'icon': Icons.event_busy,
-        'color': const Color(0xFFFF9800), // Material Orange 500
+        'color': const Color(0xFFF44336), // Red
         'subtitle': 'leave days',
       },
       {
         'title': 'Absent',
         'value': '${stats['absent']}',
         'icon': Icons.cancel,
-        'color': const Color(0xFFF44336), // Material Red 500
+        'color': const Color(0xFF795548), // Brown
         'subtitle': 'absent days',
       },
       {

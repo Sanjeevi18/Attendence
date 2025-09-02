@@ -49,8 +49,17 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
       setState(() => isLoading = true);
 
       final companyId = authController.currentCompanyId;
+      print('🔍 Loading employees for companyId: $companyId');
+
       if (companyId != null) {
         final users = await FirebaseService.getUsersByCompany(companyId);
+        print('📊 Found ${users.length} users from Firebase');
+
+        for (final user in users) {
+          print(
+            '👤 User: ${user.name} (${user.email}) - ${user.isAdmin ? 'Admin' : 'Employee'}',
+          );
+        }
 
         // Remove duplicates by using a Map with userId as key
         final Map<String, User> uniqueUsers = {};
@@ -63,10 +72,18 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
           employees = uniqueUsers.values.toList();
         });
 
+        print('✅ Final employee list count: ${employees.length}');
+
         // Load real-time duty status for all employees
         await _loadEmployeeDutyStatus();
+      } else {
+        print('❌ No companyId found - user may not be logged in properly');
+        SnackbarUtils.showError(
+          'No company ID found. Please try logging in again.',
+        );
       }
     } catch (e) {
+      print('❌ Error loading employees: $e');
       SnackbarUtils.showError('Failed to load employees: ${e.toString()}');
     } finally {
       setState(() => isLoading = false);

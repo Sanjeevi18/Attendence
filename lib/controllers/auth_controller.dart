@@ -107,13 +107,8 @@ class AuthController extends GetxController {
       isLoading.value = true;
       error.value = '';
 
-      // Check if company already exists
-      final existingCompany = await FirebaseService.getCompanyByName(
-        companyName,
-      );
-      if (existingCompany != null) {
-        throw Exception('A company with this name already exists');
-      }
+      // Note: Removed company name uniqueness check to allow multiple companies with similar names
+      // Each company will have a unique ID in Firebase
 
       // Create Firebase Auth user
       final credential = await FirebaseService.signUpWithEmailPassword(

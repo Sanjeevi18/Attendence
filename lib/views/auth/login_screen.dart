@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../controllers/auth_controller.dart';
 import '../../theme/app_theme.dart';
+import '../../services/admin_setup_service.dart';
 import 'register_screen.dart';
+import '../admin/admin_setup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -43,6 +45,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 _buildLoginForm(),
                 const SizedBox(height: 20),
                 _buildRegisterButton(),
+                const SizedBox(height: 10),
+                _buildAdminSetupButton(),
               ],
             ),
           ),
@@ -250,17 +254,33 @@ class _LoginScreenState extends State<LoginScreen> {
       child: RichText(
         text: const TextSpan(
           text: "New company? ",
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: Colors.grey),
           children: [
             TextSpan(
               text: 'Register here',
               style: TextStyle(
-                color: Colors.white,
+                color: AppTheme.primaryColor,
                 fontWeight: FontWeight.bold,
                 decoration: TextDecoration.underline,
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdminSetupButton() {
+    return TextButton(
+      onPressed: () {
+        Get.to(() => const AdminSetupScreen());
+      },
+      child: Text(
+        'Lost admin access? Create admin user',
+        style: TextStyle(
+          color: Colors.grey.withOpacity(0.7),
+          fontSize: 12,
+          decoration: TextDecoration.underline,
         ),
       ),
     );
